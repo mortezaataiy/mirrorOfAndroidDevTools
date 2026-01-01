@@ -8,45 +8,53 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout repo
-        uses: actions/checkout@v3
-
       - name: Create folders
         run: |
           mkdir -p artifacts/android_offline
 
-      - name: Download Android Studio Archive
+      # Android Studio Offline Installer (ZIP/EXE)
+      - name: Download Android Studio Giraffe Offline Installer
         run: |
-          curl -L "https://developer.android.com/studio/archive" -o artifacts/android_offline/android-studio-archive.html
+          curl -L "https://redirector.gvt1.com/edgedl/android/studio/install/2022.3.1.20/android-studio-2022.3.1.20-windows.exe" \
+          -o artifacts/android_offline/android-studio-2022.3.1.20-windows.exe
 
+      # Command-line Tools ZIP
       - name: Download Command-line Tools
         run: |
-          curl -L "https://developer.android.com/studio#command-tools-downloads" -o artifacts/android_offline/commandline-tools.html
+          curl -L "https://dl.google.com/android/repository/commandlinetools-win-9477386_latest.zip" \
+          -o artifacts/android_offline/commandlinetools-win-latest.zip
 
-      - name: Download Platform Tools (ZIP)
+      # Platform Tools ZIP
+      - name: Download Platform Tools
         run: |
-          curl -L "https://dl.google.com/android/repository/platform-tools_r33.0.2-windows.zip" -o artifacts/android_offline/platform-tools.zip
+          curl -L "https://dl.google.com/android/repository/platform-tools_r33.0.2-windows.zip" \
+          -o artifacts/android_offline/platform-tools.zip
 
+      # Build Tools 33.0.2 ZIP
       - name: Download Build Tools 33.0.2
         run: |
-          curl -L "https://dl.google.com/android/repository/build-tools_r33.0.2-windows.zip" -o artifacts/android_offline/build-tools-33.0.2.zip
+          curl -L "https://dl.google.com/android/repository/build-tools_r33.0.2-windows.zip" \
+          -o artifacts/android_offline/build-tools-33.0.2.zip
 
+      # SDK Platform API 33 ZIP
       - name: Download SDK Platform API 33
         run: |
-          curl -L "https://dl.google.com/android/repository/platforms;android-33.zip" -o artifacts/android_offline/sdk-platform-33.zip
+          curl -L "https://dl.google.com/android/repository/platforms;android-33_r06.zip" \
+          -o artifacts/android_offline/sdk-platform-33.zip
 
+      # System Image API 33 x86_64 ZIP
       - name: Download System Image API 33 x86_64
         run: |
-          curl -L "https://dl.google.com/android/repository/sys-img/google_apis/x86_64-33_r15.zip" -o artifacts/android_offline/sysimage-google-apis-x86_64-33.zip
+          curl -L "https://dl.google.com/android/repository/sys-img/google_apis/x86_64-33_r15.zip" \
+          -o artifacts/android_offline/sysimage-google-apis-x86_64-33.zip
 
+      # List files
       - name: List files
-        run: |
-          ls -l artifacts/android_offline
+        run: ls -lh artifacts/android_offline
 
-      - name: Commit artifacts
-        run: |
-          git config user.name "github-actions"
-          git config user.email "actions@github.com"
-          git add artifacts/android_offline
-          git commit -m "Add downloaded Android offline artifacts"
-          git push
+      # Upload artifacts to GitHub Actions
+      - name: Upload Artifacts
+        uses: actions/upload-artifact@v3
+        with:
+          name: android-offline
+          path: artifacts/android_offline/
