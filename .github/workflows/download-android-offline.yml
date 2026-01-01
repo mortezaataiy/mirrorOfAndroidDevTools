@@ -1,0 +1,52 @@
+name: download-android-offline
+
+on:
+  workflow_dispatch:
+
+jobs:
+  download:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v3
+
+      - name: Create folders
+        run: |
+          mkdir -p artifacts/android_offline
+
+      - name: Download Android Studio Archive
+        run: |
+          curl -L "https://developer.android.com/studio/archive" -o artifacts/android_offline/android-studio-archive.html
+
+      - name: Download Command-line Tools
+        run: |
+          curl -L "https://developer.android.com/studio#command-tools-downloads" -o artifacts/android_offline/commandline-tools.html
+
+      - name: Download Platform Tools (ZIP)
+        run: |
+          curl -L "https://dl.google.com/android/repository/platform-tools_r33.0.2-windows.zip" -o artifacts/android_offline/platform-tools.zip
+
+      - name: Download Build Tools 33.0.2
+        run: |
+          curl -L "https://dl.google.com/android/repository/build-tools_r33.0.2-windows.zip" -o artifacts/android_offline/build-tools-33.0.2.zip
+
+      - name: Download SDK Platform API 33
+        run: |
+          curl -L "https://dl.google.com/android/repository/platforms;android-33.zip" -o artifacts/android_offline/sdk-platform-33.zip
+
+      - name: Download System Image API 33 x86_64
+        run: |
+          curl -L "https://dl.google.com/android/repository/sys-img/google_apis/x86_64-33_r15.zip" -o artifacts/android_offline/sysimage-google-apis-x86_64-33.zip
+
+      - name: List files
+        run: |
+          ls -l artifacts/android_offline
+
+      - name: Commit artifacts
+        run: |
+          git config user.name "github-actions"
+          git config user.email "actions@github.com"
+          git add artifacts/android_offline
+          git commit -m "Add downloaded Android offline artifacts"
+          git push
