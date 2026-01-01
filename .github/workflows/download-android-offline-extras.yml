@@ -1,0 +1,82 @@
+name: download-android-offline-extras
+
+on:
+  workflow_dispatch:
+
+jobs:
+  download-extras:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Create folders
+        run: |
+          mkdir -p artifacts/android_extras
+          mkdir -p artifacts/android_extras/licenses
+          mkdir -p artifacts/android_extras/gradle
+          mkdir -p artifacts/android_extras/emulator
+          mkdir -p artifacts/android_extras/cmake
+          mkdir -p artifacts/android_extras/sources
+          mkdir -p artifacts/android_extras/jdk17
+          mkdir -p artifacts/android_extras/gradle-cache
+
+      # JDK 17 (Temurin)
+      - name: Download JDK 17
+        run: |
+          curl -L \
+          "https://github.com/adoptium/temurin17-binaries/releases/download/jdk-17.0.13%2B11/OpenJDK17U-jdk_x64_windows_hotspot_17.0.13_11.zip" \
+          -o artifacts/android_extras/jdk17/jdk17.zip
+
+      # Gradle 8.0.2 (AGP 8.1 compatible)
+      - name: Download Gradle 8.0.2
+        run: |
+          curl -L \
+          "https://services.gradle.org/distributions/gradle-8.0.2-bin.zip" \
+          -o artifacts/android_extras/gradle/gradle-8.0.2-bin.zip
+
+      # Android Emulator Engine
+      - name: Download Android Emulator
+        run: |
+          curl -L \
+          "https://dl.google.com/android/repository/emulator-windows_x64-33.1.10.zip" \
+          -o artifacts/android_extras/emulator/emulator.zip
+
+      # Android Sources API 33
+      - name: Download Android Sources API 33
+        run: |
+          curl -L \
+          "https://dl.google.com/android/repository/sources-33_r01.zip" \
+          -o artifacts/android_extras/sources/sources-33.zip
+
+      # CMake 3.22.1
+      - name: Download CMake
+        run: |
+          curl -L \
+          "https://dl.google.com/android/repository/cmake-3.22.1-windows.zip" \
+          -o artifacts/android_extras/cmake/cmake-3.22.1.zip
+
+      # Android SDK Licenses (static, required for offline)
+      - name: Create Android SDK license files
+        run: |
+          echo "24333f8a63b6825ea9c5514f83c2829b004d1fee" \
+            > artifacts/android_extras/licenses/android-sdk-license
+          echo "84831b9409646a918e30573bab4c9c91346d8abd" \
+            > artifacts/android_extras/licenses/android-sdk-preview-license
+          echo "33b6a2e53a7e3b56d3d6f1baf9d38f6f4d64f3a4" \
+            > artifacts/android_extras/licenses/google-gdk-license
+
+      # Prepare empty Gradle cache structure
+      - name: Prepare Gradle cache folders
+        run: |
+          mkdir -p artifacts/android_extras/gradle-cache/caches
+          mkdir -p artifacts/android_extras/gradle-cache/wrapper
+
+      - name: List downloaded files
+        run: |
+          find artifacts/android_extras -type f -exec ls -lh {} \;
+
+      # Upload as Artifact
+      - name: Upload Android Offline Extras
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-offline-extras
+          path: artifacts/android_extras/
