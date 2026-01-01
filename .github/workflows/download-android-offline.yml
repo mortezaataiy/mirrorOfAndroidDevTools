@@ -36,7 +36,7 @@ jobs:
 
       - name: Download SDK Platform API 33
         run: |
-          curl -L "https://dl.google.com/android/repository/platforms;android-33.zip" -o artifacts/sdk-platform-33.zip
+          curl -L -o artifacts/sdk-platform-33.zip "https://dl.google.com/android/repository/platforms;android-33_r01.zip"
 
       - name: Download System Image API 33 x86_64
         run: |
