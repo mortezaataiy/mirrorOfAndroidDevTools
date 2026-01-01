@@ -8,53 +8,111 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      - name: Checkout repo
+        uses: actions/checkout@v3
+
       - name: Create folders
-        run: |
-          mkdir -p artifacts/android_offline
+        run: mkdir -p artifacts
 
-      # Android Studio Offline Installer (ZIP/EXE)
-      - name: Download Android Studio Giraffe Offline Installer
-        run: |
-          curl -L "https://redirector.gvt1.com/edgedl/android/studio/install/2022.3.1.20/android-studio-2022.3.1.20-windows.exe" \
-          -o artifacts/android_offline/android-studio-2022.3.1.20-windows.exe
+      # -------------------------------
+      # Download individual files
+      # -------------------------------
 
-      # Command-line Tools ZIP
+      - name: Download Android Studio archive
+        run: |
+          curl -L "https://developer.android.com/studio/archive" -o artifacts/android-studio-archive.zip
+
       - name: Download Command-line Tools
         run: |
-          curl -L "https://dl.google.com/android/repository/commandlinetools-win-9477386_latest.zip" \
-          -o artifacts/android_offline/commandlinetools-win-latest.zip
+          curl -L "https://dl.google.com/android/repository/commandlinetools-win-latest.zip" -o artifacts/commandlinetools-win-latest.zip
 
-      # Platform Tools ZIP
       - name: Download Platform Tools
         run: |
-          curl -L "https://dl.google.com/android/repository/platform-tools_r33.0.2-windows.zip" \
-          -o artifacts/android_offline/platform-tools.zip
+          curl -L "https://dl.google.com/android/repository/platform-tools_r33.0.2-windows.zip" -o artifacts/platform-tools.zip
 
-      # Build Tools 33.0.2 ZIP
       - name: Download Build Tools 33.0.2
         run: |
-          curl -L "https://dl.google.com/android/repository/build-tools_r33.0.2-windows.zip" \
-          -o artifacts/android_offline/build-tools-33.0.2.zip
+          curl -L "https://dl.google.com/android/repository/build-tools_r33.0.2-windows.zip" -o artifacts/build-tools-33.0.2.zip
 
-      # SDK Platform API 33 ZIP
       - name: Download SDK Platform API 33
         run: |
-          curl -L "https://dl.google.com/android/repository/platforms;android-33_r06.zip" \
-          -o artifacts/android_offline/sdk-platform-33.zip
+          curl -L "https://dl.google.com/android/repository/platforms;android-33.zip" -o artifacts/sdk-platform-33.zip
 
-      # System Image API 33 x86_64 ZIP
       - name: Download System Image API 33 x86_64
         run: |
-          curl -L "https://dl.google.com/android/repository/sys-img/google_apis/x86_64-33_r15.zip" \
-          -o artifacts/android_offline/sysimage-google-apis-x86_64-33.zip
+          curl -L "https://dl.google.com/android/repository/sys-img/google_apis/x86_64-33_r15.zip" -o artifacts/sysimage-google-apis-x86_64-33.zip
 
-      # List files
-      - name: List files
-        run: ls -lh artifacts/android_offline
+      - name: Download Extras
+        run: |
+          curl -L "https://dl.google.com/android/repository/android_m2repository_r47.zip" -o artifacts/android-m2repository.zip
+          curl -L "https://dl.google.com/android/repository/google_m2repository_gms_v11_3_rc05_wear_2_0_7.zip" -o artifacts/google-m2repository.zip
+          curl -L "https://dl.google.com/android/repository/constraint_layout_2.0.4.zip" -o artifacts/constraint_layout_2.0.4.zip
 
-      # Upload artifacts to GitHub Actions using v4
-      - name: Upload Artifacts
+      - name: Download JDK 17
+        run: |
+          curl -L "https://github.com/adoptium/temurin17-binaries/releases/download/jdk-17.0.13%2B11/OpenJDK17U-jdk_x64_windows_hotspot_17.0.13_11.zip" -o artifacts/jdk-17.zip
+
+      - name: Download Gradle
+        run: |
+          curl -L "https://services.gradle.org/distributions/gradle-7.5-bin.zip" -o artifacts/gradle-7.5-bin.zip
+
+      # -------------------------------
+      # Upload artifacts separately
+      # -------------------------------
+
+      - name: Upload Android Studio
         uses: actions/upload-artifact@v4
         with:
-          name: android-offline
-          path: artifacts/android_offline/
+          name: android-studio
+          path: artifacts/android-studio-archive.zip
+
+      - name: Upload Command-line Tools
+        uses: actions/upload-artifact@v4
+        with:
+          name: commandlinetools
+          path: artifacts/commandlinetools-win-latest.zip
+
+      - name: Upload Platform Tools
+        uses: actions/upload-artifact@v4
+        with:
+          name: platform-tools
+          path: artifacts/platform-tools.zip
+
+      - name: Upload Build Tools
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-tools-33.0.2
+          path: artifacts/build-tools-33.0.2.zip
+
+      - name: Upload SDK Platform API 33
+        uses: actions/upload-artifact@v4
+        with:
+          name: sdk-platform-33
+          path: artifacts/sdk-platform-33.zip
+
+      - name: Upload System Image API 33
+        uses: actions/upload-artifact@v4
+        with:
+          name: sysimage-google-apis-x86_64-33
+          path: artifacts/sysimage-google-apis-x86_64-33.zip
+
+      - name: Upload Extras
+        uses: actions/upload-artifact@v4
+        with:
+          name: extras
+          path: |
+            artifacts/android-m2repository.zip
+            artifacts/google-m2repository.zip
+            artifacts/constraint_layout_2.0.4.zip
+
+      - name: Upload JDK
+        uses: actions/upload-artifact@v4
+        with:
+          name: jdk-17
+          path: artifacts/jdk-17.zip
+
+      - name: Upload Gradle
+        uses: actions/upload-artifact@v4
+        with:
+          name: gradle-7.5
+          path: artifacts/gradle-7.5-bin.zip
