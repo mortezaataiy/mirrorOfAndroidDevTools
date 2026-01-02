@@ -1,1 +1,17 @@
+# فایل‌های دانلود شده - این فایل‌ها نباید در git commit شوند
 .ignoredDownloads/*
+
+# فایل‌های موقت ویندوز
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# فایل‌های PowerShell
+*.ps1.bak
+
+# فایل‌های لاگ
+*.log
+
+# فایل‌های فشرده موقت
+*.tmp
+*.temp

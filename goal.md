@@ -1,32 +1,32 @@
-GOAL:
-Create a COMPLETE, RELIABLE, and DEFENSIVE offline Android development pipeline.
+هدف:
+ایجاد یک pipeline کامل، قابل اعتماد و دفاعی برای توسعه آفلاین اندروید.
 
-SCOPE:
+دامنه کار:
 1. GitHub Actions workflow
-2. Offline Windows installer automation
-3. End-to-end validation (SDK → build → Hello World APK)
+2. اتوماسیون نصب‌کننده آفلاین ویندوز
+3. اعتبارسنجی انتها به انتها (SDK → build → Hello World APK)
 
-HARD REQUIREMENTS (do NOT violate):
-- Everything must be fully offline after artifacts are downloaded
-- Every downloadable file MUST be:
-  - downloaded via direct binary URL (NO HTML pages)
-  - validated before use (ZIP integrity test)
-  - uploaded as a SEPARATE GitHub Artifact
-- No assumptions about folder names or structure
-- Defensive error handling with clear messages
-- No emojis
-- No placeholders
-- Use actions/upload-artifact@v4 only
+الزامات سخت (نقض نکنید):
+- همه چیز باید پس از دانلود artifacts کاملاً آفلاین باشد
+- هر فایل قابل دانلود باید:
+  - از طریق URL مستقیم باینری دانلود شود (بدون صفحات HTML)
+  - قبل از استفاده اعتبارسنجی شود (تست یکپارچگی ZIP)
+  - به عنوان یک GitHub Artifact جداگانه آپلود شود
+- هیچ فرضی درباره نام پوشه‌ها یا ساختار
+- مدیریت خطای دفاعی با پیام‌های واضح
+- بدون ایموجی
+- بدون placeholder
+- فقط از actions/upload-artifact@v4 استفاده کنید
 
 ────────────────────────────────────────
-PART 1 — GitHub Actions (Downloader + Validator)
+بخش 1 — GitHub Actions (دانلودکننده + اعتبارسنج)
 ────────────────────────────────────────
 
-Create ONE GitHub Actions workflow that:
+یک GitHub Actions workflow ایجاد کنید که:
 
-1. Downloads ALL required Android offline components, EACH AS A SEPARATE FILE:
+1. تمام کامپوننت‌های آفلاین اندروید مورد نیاز را دانلود کند، هر کدام به عنوان فایل جداگانه:
    - JDK 17 (Windows x64 ZIP)
-   - Gradle (exact version compatible with Android Studio 2022.3.1)
+   - Gradle (نسخه دقیق سازگار با Android Studio 2022.3.1)
    - Android SDK Command-line Tools (Windows)
    - Platform-tools
    - Build-tools 33.x
@@ -34,100 +34,100 @@ Create ONE GitHub Actions workflow that:
    - Android Emulator system image (API 33 x86_64 Google APIs)
    - AndroidX / Google Maven repositories (android_m2repository, google_m2repository)
 
-2. For EACH downloaded file:
-   - Validate it is a real ZIP (not HTML, not redirect)
-   - Fail immediately if:
-     - file size is suspiciously small
-     - ZIP integrity check fails
-   - Upload it as its OWN artifact (one file = one artifact)
+2. برای هر فایل دانلود شده:
+   - اعتبار آن را به عنوان ZIP واقعی بررسی کند (نه HTML، نه redirect)
+   - فوراً fail کند اگر:
+     - اندازه فایل مشکوک کوچک باشد
+     - تست یکپارچگی ZIP fail شود
+   - آن را به عنوان artifact مخصوص خودش آپلود کند (یک فایل = یک artifact)
 
-3. Artifacts must be clearly named (example):
+3. Artifacts باید نام‌گذاری واضحی داشته باشند (مثال):
    - jdk-17
    - gradle-7.5
    - sdk-platform-33
    - build-tools-33.0.2
-   - etc.
+   - و غیره
 
-4. The workflow MUST FAIL if ANY single file is invalid.
+4. workflow باید fail شود اگر هر فایل منفردی نامعتبر باشد.
 
 ────────────────────────────────────────
-PART 2 — Offline Windows Installer Script
+بخش 2 — اسکریپت نصب‌کننده آفلاین ویندوز
 ────────────────────────────────────────
 
-Create ONE PowerShell script that:
+یک اسکریپت PowerShell ایجاد کنید که:
 
-1. Runs fully offline
-2. Installs everything under:
+1. کاملاً آفلاین اجرا شود
+2. همه چیز را زیر این مسیر نصب کند:
    D:\Android\
 
-3. For EACH required component (JDK, Gradle, SDK, etc):
-   - If already installed → skip
-   - Else:
-     - Search recursively for an extracted folder containing the expected executable
-     - If not found → search recursively for a ZIP
-     - If ZIP found → validate ZIP → extract → install
-     - If nothing found → FAIL with explicit error
+3. برای هر کامپوننت مورد نیاز (JDK, Gradle, SDK, و غیره):
+   - اگر قبلاً نصب شده → skip کند
+   - در غیر این صورت:
+     - به صورت بازگشتی برای پوشه استخراج شده حاوی executable مورد انتظار جستجو کند
+     - اگر پیدا نشد → به صورت بازگشتی برای ZIP جستجو کند
+     - اگر ZIP پیدا شد → ZIP را اعتبارسنجی کند → استخراج کند → نصب کند
+     - اگر چیزی پیدا نشد → با خطای صریح fail کند
 
-4. NEVER assume:
-   - file names
-   - folder names
-   - archive layout
+4. هرگز فرض نکند:
+   - نام فایل‌ها
+   - نام پوشه‌ها
+   - layout آرشیو
 
-5. Validate installation by checking:
+5. نصب را با بررسی این موارد اعتبارسنجی کند:
    - java -version
    - gradle -v
    - adb version
    - sdkmanager list
 
-6. Set system-wide environment variables:
+6. متغیرهای محیطی سیستم‌گستر تنظیم کند:
    - JAVA_HOME
    - ANDROID_HOME
    - ANDROID_SDK_ROOT
    - PATH
 
 ────────────────────────────────────────
-PART 3 — Automated Validation Build
+بخش 3 — اعتبارسنجی خودکار Build
 ────────────────────────────────────────
 
-After installation, the script MUST:
+پس از نصب، اسکریپت باید:
 
-1. Create a brand-new Android project:
+1. یک پروژه اندروید کاملاً جدید ایجاد کند:
    - Hello World
    - Minimum SDK: 21
    - Compile SDK: 33
-   - No Compose (XML-based)
+   - بدون Compose (مبتنی بر XML)
 
-2. Build the project completely offline:
+2. پروژه را کاملاً آفلاین build کند:
    - ./gradlew assembleDebug --offline
 
-3. Verify:
-   - APK exists
-   - Build succeeded
+3. تأیید کند:
+   - APK وجود دارد
+   - Build موفق بوده
 
-4. Output:
-   - Absolute path to the generated APK
-   - Clear SUCCESS message
-
-────────────────────────────────────────
-FAILURE POLICY
-────────────────────────────────────────
-
-- If ANY step fails:
-  - Stop immediately
-  - Print:
-    - What failed
-    - Why
-    - What file or component is missing or corrupted
+4. خروجی:
+   - مسیر مطلق APK تولید شده
+   - پیام SUCCESS واضح
 
 ────────────────────────────────────────
-DELIVERABLES
+سیاست شکست
 ────────────────────────────────────────
 
-Return:
-1. Full GitHub Actions YAML
-2. Full PowerShell installer script
-3. Short explanation of verification logic
+- اگر هر مرحله‌ای fail شود:
+  - فوراً متوقف شود
+  - چاپ کند:
+    - چه چیزی fail شده
+    - چرا
+    - چه فایل یا کامپوننتی گم یا خراب است
 
-NO explanations in between.
-NO assumptions.
-NO shortcuts.
+────────────────────────────────────────
+تحویلی‌ها
+────────────────────────────────────────
+
+برگردانید:
+1. GitHub Actions YAML کامل
+2. اسکریپت نصب‌کننده PowerShell کامل
+3. توضیح کوتاه منطق تأیید
+
+بدون توضیحات بین مراحل.
+بدون فرضیات.
+بدون میانبر.
