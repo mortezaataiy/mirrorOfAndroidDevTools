@@ -12,23 +12,29 @@
 graph TD
     A[شروع GitHub Action] --> B[شناسایی ورژن‌های جدید]
     B --> C[اعتبارسنجی لینک‌های دانلود]
-    C --> D[دانلود و نصب ابزارها]
-    D --> E[ایجاد پروژه Hello World]
-    E --> F[بیلد و تست پروژه]
-    F --> G[به‌روزرسانی فایل YAML]
-    G --> H[پایان موفقیت‌آمیز]
+    C --> D[دانلود ابزارها]
+    D --> E[اجرای اسکریپت PowerShell پیشرفته]
+    E --> F[تشخیص هوشمند و اعتبارسنجی]
+    F --> G[نصب و پیکربندی]
+    G --> H[تست Hello World و تولید APK]
+    H --> I[به‌روزرسانی فایل YAML]
+    I --> J[پایان موفقیت‌آمیز]
     
-    B --> I[خطا در شناسایی]
-    C --> J[خطا در اعتبارسنجی]
-    D --> K[خطا در نصب]
-    E --> L[خطا در ایجاد پروژه]
-    F --> M[خطا در بیلد]
+    B --> K[خطا در شناسایی]
+    C --> L[خطا در اعتبارسنجی]
+    D --> M[خطا در دانلود]
+    E --> N[خطا در اجرای اسکریپت]
+    F --> O[خطا در تشخیص]
+    G --> P[خطا در نصب]
+    H --> Q[خطا در تست]
     
-    I --> N[گزارش خطا و توقف]
-    J --> N
-    K --> N
-    L --> N
-    M --> N
+    K --> R[گزارش خطا و توقف]
+    L --> R
+    M --> R
+    N --> R
+    O --> R
+    P --> R
+    Q --> R
 ```
 
 ## کامپوننت‌ها و رابط‌ها
@@ -131,36 +137,49 @@ function Install-AndroidTool {
 }
 ```
 
-### 4. Hello World Project Builder
+### 4. PowerShell Integration Manager
 
-**مسئولیت**: ایجاد و بیلد پروژه تست Hello World
+**مسئولیت**: اجرای اسکریپت `auto-download-and-setup-android-offline.ps1` و مدیریت نتایج
 
 **رابط‌های ورودی**:
-- مسیرهای ابزارهای نصب شده
-- تنظیمات پروژه
+- مسیر فایل‌های دانلود شده
+- پارامترهای اجرای اسکریپت
 
 **رابط‌های خروجی**:
-- وضعیت بیلد
-- مسیر فایل APK تولید شده
+- وضعیت اجرای اسکریپت
+- گزارش HTML تولید شده
+- لاگ‌های تفصیلی
 
 **پیاده‌سازی**:
 ```powershell
-function New-HelloWorldProject {
-    param($ProjectPath, $AndroidSdkPath, $GradlePath)
+function Invoke-PowerShellInstaller {
+    param($DownloadPath, $InstallPath)
     
-    # ایجاد پروژه با Android CLI
-    & "$AndroidSdkPath\cmdline-tools\latest\bin\sdkmanager.bat" --install "platforms;android-33"
+    Write-Host "اجرای اسکریپت نصب آفلاین..."
     
-    # ایجاد پروژه جدید
-    $projectName = "HelloWorldTest"
-    New-Item -ItemType Directory -Path "$ProjectPath\$projectName" -Force
+    # اجرای اسکریپت با پارامترهای مناسب
+    $scriptResult = & ".\auto-download-and-setup-android-offline.ps1" `
+        -Mode "Verbose" `
+        -InstallPath $InstallPath `
+        -SourcePath $DownloadPath `
+        -GenerateReport `
+        -Force
     
-    # ایجاد فایل‌های پروژه
-    # ... کد ایجاد پروژه
-    
-    # بیلد پروژه
-    Set-Location "$ProjectPath\$projectName"
-    & "$GradlePath\bin\gradle.bat" assembleDebug
+    # بررسی نتیجه
+    if ($LASTEXITCODE -eq 0) {
+        Write-Host "✅ اسکریپت با موفقیت اجرا شد"
+        return @{
+            Success = $true
+            APKPath = Get-GeneratedAPKPath
+            ReportPath = Get-HTMLReportPath
+        }
+    } else {
+        Write-Host "❌ اسکریپت با خطا مواجه شد"
+        return @{
+            Success = $false
+            Error = "اسکریپت نصب ناموفق بود"
+        }
+    }
 }
 ```
 
@@ -294,9 +313,9 @@ HelloWorldTest/
 *برای هر* ابزار شناسایی شده، اگر لینک دانلود معتبر باشد، فرایند دانلود و نصب باید موفقیت‌آمیز باشد
 **اعتبارسنجی: الزامات ۲.۱، ۲.۲**
 
-### خصوصیت ۳: بیلد Hello World
-*برای هر* مجموعه ابزارهای نصب شده، ایجاد و بیلد پروژه Hello World باید موفقیت‌آمیز باشد
-**اعتبارسنجی: الزامات ۲.۳، ۲.۴، ۷.۱، ۷.۲، ۷.۳، ۷.۴**
+### خصوصیت ۳: یکپارچگی اسکریپت PowerShell
+*برای هر* اجرای GitHub Action، اسکریپت `auto-download-and-setup-android-offline.ps1` باید با موفقیت اجرا شده و تمام مراحل تشخیص، نصب و تست را کامل کند
+**اعتبارسنجی: الزامات ۲.۲، ۲.۳، ۲.۴، ۷.۱، ۷.۲، ۷.۳**
 
 ### خصوصیت ۴: یکپارچگی فایل YAML
 *برای هر* به‌روزرسانی موفق، فایل YAML باید حاوی تمام اطلاعات ضروری (ورژن، لینک، تاریخ) باشد
@@ -318,8 +337,8 @@ HelloWorldTest/
 *برای هر* مرحله اجرا، سیستم باید وضعیت و جزئیات را در لاگ ثبت کند
 **اعتبارسنجی: الزامات ۵.۱، ۵.۲، ۵.۳، ۵.۴، ۵.۵**
 
-### خصوصیت ۹: اعتبارسنجی APK
-*برای هر* فایل APK تولید شده، سیستم باید اندازه و یکپارچگی آن را تأیید کند
+### خصوصیت ۹: گزارش‌دهی پیشرفته
+*برای هر* اجرای موفق اسکریپت، سیستم باید گزارش HTML، لاگ‌های تفصیلی و اطلاعات APK تولید شده را ذخیره کند
 **اعتبارسنجی: الزامات ۷.۵**
 
 ### خصوصیت ۱۰: به‌روزرسانی تدریجی
