@@ -1,0 +1,156 @@
+name: Android Offline Full Test
+
+on:
+  workflow_dispatch:
+
+jobs:
+  android-offline-test:
+    runs-on: windows-latest
+    timeout-minutes: 60
+
+    env:
+      ANDROID_ROOT: D:\Android\sdk
+      GRADLE_HOME: D:\Android\gradle
+      JAVA_HOME: D:\Android\jdk17
+      PATH: D:\Android\jdk17\bin;D:\Android\gradle\bin;%PATH%
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v3
+
+      - name: Create folders
+        run: |
+          mkdir D:\Android\sdk
+          mkdir D:\Android\gradle
+          mkdir D:\Android\jdk17
+          mkdir D:\Android\projects
+
+      ####################################################################
+      # Download & Validate Artifacts (Windows ZIPs)
+      ####################################################################
+      - name: Download JDK 17
+        run: |
+          $url = "https://github.com/adoptium/temurin17-binaries/releases/download/jdk-17.0.13%2B11/OpenJDK17U-jdk_x64_windows_hotspot_17.0.13_11.zip"
+          $out = "D:\Android\artifacts\jdk17.zip"
+          Invoke-WebRequest -Uri $url -OutFile $out
+          if ((Get-Item $out).Length -lt 200MB) { throw "JDK zip too small!" }
+          Write-Host "✔ JDK downloaded"
+
+      - name: Extract JDK
+        run: Expand-Archive -Path "D:\Android\artifacts\jdk17.zip" -DestinationPath $env:JAVA_HOME -Force
+
+      - name: Download Gradle 7.6.3
+        run: |
+          $url="https://services.gradle.org/distributions/gradle-7.6.3-bin.zip"
+          $out="D:\Android\artifacts\gradle.zip"
+          Invoke-WebRequest -Uri $url -OutFile $out
+          if ((Get-Item $out).Length -lt 50MB) { throw "Gradle zip too small!" }
+          Write-Host "✔ Gradle downloaded"
+
+      - name: Extract Gradle
+        run: Expand-Archive -Path "D:\Android\artifacts\gradle.zip" -DestinationPath $env:GRADLE_HOME -Force
+
+      - name: Download Android SDK Command-line Tools
+        run: |
+          $url="https://dl.google.com/android/repository/commandlinetools-win-9477386_latest.zip"
+          $out="D:\Android\artifacts\cmdline-tools.zip"
+          Invoke-WebRequest -Uri $url -OutFile $out
+          if ((Get-Item $out).Length -lt 50MB) { throw "Command-line tools zip too small!" }
+          Write-Host "✔ Command-line Tools downloaded"
+
+      - name: Extract Command-line Tools
+        run: |
+          Expand-Archive -Path "D:\Android\artifacts\cmdline-tools.zip" -DestinationPath "$env:ANDROID_ROOT\cmdline-tools" -Force
+
+      - name: Download Build Tools 34.0.3
+        run: |
+          $url="https://dl.google.com/android/repository/build-tools_r34.0.3-windows.zip"
+          $out="D:\Android\artifacts\build-tools-34.0.3.zip"
+          Invoke-WebRequest -Uri $url -OutFile $out
+          if ((Get-Item $out).Length -lt 40MB) { throw "Build-tools zip too small!" }
+
+      - name: Extract Build Tools
+        run: Expand-Archive -Path "D:\Android\artifacts\build-tools-34.0.3.zip" -DestinationPath "$env:ANDROID_ROOT\build-tools\34.0.3" -Force
+
+      - name: Download Platform Tools
+        run: |
+          $url="https://dl.google.com/android/repository/platform-tools_r34.0.5-windows.zip"
+          $out="D:\Android\artifacts\platform-tools.zip"
+          Invoke-WebRequest -Uri $url -OutFile $out
+          if ((Get-Item $out).Length -lt 15MB) { throw "Platform-tools zip too small!" }
+
+      - name: Extract Platform Tools
+        run: Expand-Archive -Path "D:\Android\artifacts\platform-tools.zip" -DestinationPath "$env:ANDROID_ROOT\platform-tools" -Force
+
+      - name: Download SDK Platforms (33,30,27)
+        run: |
+          $urls = @{
+            "33" = "https://dl.google.com/android/repository/platform-33_r03.zip"
+            "30" = "https://dl.google.com/android/repository/platform-30_r03.zip"
+            "27" = "https://dl.google.com/android/repository/platform-27_r03.zip"
+          }
+          foreach ($api in $urls.Keys) {
+            $out = "D:\Android\artifacts\platform-$api.zip"
+            Invoke-WebRequest -Uri $urls[$api] -OutFile $out
+            if ((Get-Item $out).Length -lt 25MB) { throw "SDK Platform $api zip too small!" }
+            Expand-Archive -Path $out -DestinationPath "$env:ANDROID_ROOT\platforms\android-$api" -Force
+            Write-Host "✔ SDK Platform API $api installed"
+          }
+
+      ####################################################################
+      # License Files
+      ####################################################################
+      - name: Create SDK Licenses
+        run: |
+          $licenses="$env:ANDROID_ROOT\licenses"
+          mkdir $licenses -Force
+          # Official hashes
+          Set-Content "$licenses\android-sdk-license" "24333f8a63b6825ea9c5514f83c2829b004d1fee`n84831b9409646a918e30573bab4c9c91346d8abd"
+          Set-Content "$licenses\android-sdk-preview-license" "84831b9409646a918e30573bab4c9c91346d8abd"
+          Set-Content "$licenses\google-gdk-license" "d3a8dc6cded4f684aa1a0045c3a8c6f59f6a5f4f"
+
+      ####################################################################
+      # Environment Verification
+      ####################################################################
+      - name: Verify Installations
+        run: |
+          & "$env:JAVA_HOME\bin\java.exe" -version
+          & "$env:GRADLE_HOME\bin\gradle.bat" -v
+          & "$env:ANDROID_ROOT\platform-tools\adb.exe" version
+
+      ####################################################################
+      # Create Hello World Project & Build Offline
+      ####################################################################
+      - name: Create Hello World Project
+        run: |
+          $proj="D:\Android\projects\HelloWorld"
+          mkdir $proj -Force
+          cd $proj
+          & "$env:GRADLE_HOME\bin\gradle.bat" init --type basic --dsl groovy --project-name HelloWorld --package com.example.helloworld
+
+      - name: Add build.gradle offline setup
+        run: |
+          Set-Content -Path "D:\Android\projects\HelloWorld\build.gradle" -Value @"
+plugins {
+    id 'java'
+}
+
+repositories {
+    maven {
+        url = 'file:///$env:ANDROID_ROOT/extras/android/m2repository'
+    }
+}
+
+dependencies {
+}
+"@
+
+      - name: Build Hello World Offline
+        run: |
+          cd D:\Android\projects\HelloWorld
+          & "$env:GRADLE_HOME\bin\gradle.bat" assemble --offline
+
+      - name: Output APK / JAR Path
+        run: |
+          $apk = Get-ChildItem "D:\Android\projects\HelloWorld\build\libs" -Recurse | Select-Object -First 1
+          Write-Host "✔ Hello World build output: $($apk.FullName)"

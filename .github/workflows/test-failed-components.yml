@@ -1,0 +1,411 @@
+name: Test Failed Components - URL Alternative Finder
+
+on:
+  workflow_dispatch:
+
+jobs:
+  test-alternatives:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Create test directory
+        run: mkdir -p test_downloads
+
+      - name: Initialize test tracking
+        run: |
+          echo "[]" > test_results.json
+          echo "VALID_URLS=" >> $GITHUB_ENV
+          echo "FAILED_URLS=" >> $GITHUB_ENV
+
+      - name: Create test functions
+        run: |
+          cat << 'EOF' > test_functions.sh
+          #!/bin/bash
+          
+          # تابع تست URL جایگزین
+          test_alternative_url() {
+            local url=$1
+            local component_name=$2
+            local min_size=$3
+            local validation_type=$4
+            local filename=$5
+            
+            echo "=== تست URL جایگزین برای $component_name ==="
+            echo "URL: $url"
+            echo "حداقل اندازه: $min_size bytes"
+            
+            # دانلود فایل
+            echo "شروع دانلود..."
+            start_time=$(date +%s)
+            if ! curl -L -o "test_downloads/test_$filename" "$url" --max-time 300; then
+              echo "ERROR: دانلود ناکام"
+              log_test_result "$url" "$component_name" "false" "0" "0" "دانلود ناکام" ""
+              return 1
+            fi
+            end_time=$(date +%s)
+            download_time=$((end_time - start_time))
+            
+            # بررسی وجود فایل
+            if [ ! -f "test_downloads/test_$filename" ]; then
+              echo "ERROR: فایل دانلود نشده"
+              log_test_result "$url" "$component_name" "false" "0" "$download_time" "فایل وجود ندارد" ""
+              return 1
+            fi
+            
+            # بررسی اندازه
+            file_size=$(stat -c%s "test_downloads/test_$filename")
+            echo "اندازه فایل: $file_size bytes"
+            
+            if [ $file_size -lt $min_size ]; then
+              echo "ERROR: اندازه کوچک ($file_size bytes, حداقل: $min_size)"
+              log_test_result "$url" "$component_name" "false" "$file_size" "$download_time" "اندازه کوچک" ""
+              rm -f "test_downloads/test_$filename"
+              return 1
+            fi
+            
+            # بررسی HTML
+            echo "بررسی محتوای HTML..."
+            if head -c 1024 "test_downloads/test_$filename" | grep -qi -E '(<html|<!DOCTYPE|<head|<body)'; then
+              echo "ERROR: محتوای HTML تشخیص داده شد"
+              log_test_result "$url" "$component_name" "false" "$file_size" "$download_time" "محتوای HTML" ""
+              rm -f "test_downloads/test_$filename"
+              return 1
+            fi
+            
+            # بررسی ZIP (در صورت نیاز)
+            if [ "$validation_type" = "zip" ]; then
+              echo "بررسی یکپارچگی ZIP..."
+              if ! unzip -t "test_downloads/test_$filename" > /dev/null 2>&1; then
+                echo "ERROR: فایل ZIP معتبر نیست"
+                log_test_result "$url" "$component_name" "false" "$file_size" "$download_time" "ZIP نامعتبر" ""
+                rm -f "test_downloads/test_$filename"
+                return 1
+              fi
+            fi
+            
+            # محاسبه checksum
+            echo "محاسبه checksum..."
+            checksum=$(sha256sum "test_downloads/test_$filename" | cut -d' ' -f1)
+            
+            echo "✅ SUCCESS: URL معتبر"
+            echo "   اندازه: $file_size bytes"
+            echo "   زمان دانلود: $download_time ثانیه"
+            echo "   Checksum: $checksum"
+            
+            log_test_result "$url" "$component_name" "true" "$file_size" "$download_time" "" "$checksum"
+            rm -f "test_downloads/test_$filename"
+            return 0
+          }
+          
+          # تابع ثبت نتیجه تست
+          log_test_result() {
+            local url=$1
+            local component_name=$2
+            local success=$3
+            local file_size=$4
+            local download_time=$5
+            local error_message=$6
+            local checksum=$7
+            
+            cat << JSONEOF > temp_test_entry.json
+          {
+            "url": "$url",
+            "component_name": "$component_name",
+            "success": $success,
+            "file_size": $file_size,
+            "download_time": $download_time,
+            "error_message": "$error_message",
+            "checksum": "$checksum",
+            "timestamp": "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          }
+          JSONEOF
+            
+            # اضافه کردن به فایل JSON
+            if [ -f "test_results.json" ]; then
+              jq ". += [$(cat temp_test_entry.json)]" test_results.json > temp.json && mv temp.json test_results.json
+            else
+              echo "[$(cat temp_test_entry.json)]" > test_results.json
+            fi
+            
+            rm -f temp_test_entry.json
+          }
+          EOF
+          
+          chmod +x test_functions.sh
+
+      - name: Test Platform Tools alternatives
+        run: |
+          source test_functions.sh
+          
+          echo "=== تست URL های جایگزین برای Platform Tools ==="
+          
+          # تعریف URL های جایگزین
+          urls=(
+            "https://dl.google.com/android/repository/platform-tools_r34.0.5-windows.zip"
+            "https://dl.google.com/android/repository/platform-tools_r33.0.2-windows.zip"
+            "https://dl.google.com/android/repository/platform-tools-latest-windows.zip"
+            "https://dl.google.com/android/repository/platform-tools_r35.0.0-windows.zip"
+          )
+          
+          min_size=15728640  # 15MB
+          validation_type="zip"
+          filename="platform-tools.zip"
+          
+          valid_found=false
+          for url in "${urls[@]}"; do
+            if test_alternative_url "$url" "Platform Tools" "$min_size" "$validation_type" "$filename"; then
+              echo "VALID_PLATFORM_TOOLS_URL=$url" >> $GITHUB_ENV
+              valid_found=true
+              break
+            fi
+          done
+          
+          if [ "$valid_found" = false ]; then
+            echo "⚠️ هیچ URL معتبر برای Platform Tools پیدا نشد"
+          fi
+
+      - name: Test SDK Platform API 33 alternatives
+        run: |
+          source test_functions.sh
+          
+          echo "=== تست URL های جایگزین برای SDK Platform API 33 ==="
+          
+          # تعریف URL های جایگزین
+          urls=(
+            "https://dl.google.com/android/repository/platform-33_r02.zip"
+            "https://dl.google.com/android/repository/platform-33_r01.zip"
+            "https://dl.google.com/android/repository/platforms/android-33/android-33_r02.zip"
+            "https://dl.google.com/android/repository/platforms/android-33/android-33_r01.zip"
+          )
+          
+          min_size=26214400  # 25MB
+          validation_type="zip"
+          filename="sdk-platform-33.zip"
+          
+          valid_found=false
+          for url in "${urls[@]}"; do
+            if test_alternative_url "$url" "SDK Platform API 33" "$min_size" "$validation_type" "$filename"; then
+              echo "VALID_SDK_PLATFORM_33_URL=$url" >> $GITHUB_ENV
+              valid_found=true
+              break
+            fi
+          done
+          
+          if [ "$valid_found" = false ]; then
+            echo "⚠️ هیچ URL معتبر برای SDK Platform API 33 پیدا نشد"
+          fi
+
+      - name: Test Android M2Repository alternatives
+        run: |
+          source test_functions.sh
+          
+          echo "=== تست URL های جایگزین برای Android M2Repository ==="
+          
+          # تعریف URL های جایگزین
+          urls=(
+            "https://dl.google.com/android/repository/android_m2repository_r57.zip"
+            "https://dl.google.com/android/repository/android_m2repository_r56.zip"
+            "https://dl.google.com/android/repository/android_m2repository_r47.zip"
+            "https://dl.google.com/android/repository/android_m2repository_r55.zip"
+          )
+          
+          min_size=52428800  # 50MB
+          validation_type="zip"
+          filename="android-m2repository.zip"
+          
+          valid_found=false
+          for url in "${urls[@]}"; do
+            if test_alternative_url "$url" "Android M2Repository" "$min_size" "$validation_type" "$filename"; then
+              echo "VALID_ANDROID_M2REPO_URL=$url" >> $GITHUB_ENV
+              valid_found=true
+              break
+            fi
+          done
+          
+          if [ "$valid_found" = false ]; then
+            echo "⚠️ هیچ URL معتبر برای Android M2Repository پیدا نشد"
+          fi
+
+      - name: Test Google M2Repository alternatives
+        run: |
+          source test_functions.sh
+          
+          echo "=== تست URL های جایگزین برای Google M2Repository ==="
+          
+          # تعریف URL های جایگزین
+          urls=(
+            "https://dl.google.com/android/repository/google_m2repository_r201.zip"
+            "https://dl.google.com/android/repository/google_m2repository_r200.zip"
+            "https://dl.google.com/android/repository/google_m2repository_r199.zip"
+            "https://dl.google.com/android/repository/google_m2repository_r58.zip"
+          )
+          
+          min_size=52428800  # 50MB
+          validation_type="zip"
+          filename="google-m2repository.zip"
+          
+          valid_found=false
+          for url in "${urls[@]}"; do
+            if test_alternative_url "$url" "Google M2Repository" "$min_size" "$validation_type" "$filename"; then
+              echo "VALID_GOOGLE_M2REPO_URL=$url" >> $GITHUB_ENV
+              valid_found=true
+              break
+            fi
+          done
+          
+          if [ "$valid_found" = false ]; then
+            echo "⚠️ هیچ URL معتبر برای Google M2Repository پیدا نشد"
+          fi
+
+      - name: Generate test results summary
+        run: |
+          echo "=== خلاصه نتایج تست URL های جایگزین ==="
+          
+          # شمارش نتایج
+          total_tests=$(jq 'length' test_results.json)
+          successful_tests=$(jq '[.[] | select(.success == true)] | length' test_results.json)
+          failed_tests=$(jq '[.[] | select(.success == false)] | length' test_results.json)
+          
+          echo "تعداد کل تست‌ها: $total_tests"
+          echo "تست‌های موفق: $successful_tests"
+          echo "تست‌های ناکام: $failed_tests"
+          
+          # نمایش URL های معتبر پیدا شده
+          echo ""
+          echo "=== URL های معتبر پیدا شده ==="
+          
+          if [ -n "${VALID_PLATFORM_TOOLS_URL:-}" ]; then
+            echo "✅ Platform Tools: $VALID_PLATFORM_TOOLS_URL"
+          else
+            echo "❌ Platform Tools: هیچ URL معتبر پیدا نشد"
+          fi
+          
+          if [ -n "${VALID_SDK_PLATFORM_33_URL:-}" ]; then
+            echo "✅ SDK Platform API 33: $VALID_SDK_PLATFORM_33_URL"
+          else
+            echo "❌ SDK Platform API 33: هیچ URL معتبر پیدا نشد"
+          fi
+          
+          if [ -n "${VALID_ANDROID_M2REPO_URL:-}" ]; then
+            echo "✅ Android M2Repository: $VALID_ANDROID_M2REPO_URL"
+          else
+            echo "❌ Android M2Repository: هیچ URL معتبر پیدا نشد"
+          fi
+          
+          if [ -n "${VALID_GOOGLE_M2REPO_URL:-}" ]; then
+            echo "✅ Google M2Repository: $VALID_GOOGLE_M2REPO_URL"
+          else
+            echo "❌ Google M2Repository: هیچ URL معتبر پیدا نشد"
+          fi
+
+      - name: Create patch instructions
+        run: |
+          cat << 'EOF' > patch_instructions.md
+          # دستورالعمل اصلاح workflow اصلی
+          
+          ## URL های معتبر پیدا شده
+          
+          EOF
+          
+          if [ -n "${VALID_PLATFORM_TOOLS_URL:-}" ]; then
+            echo "### Platform Tools" >> patch_instructions.md
+            echo "URL جدید: \`$VALID_PLATFORM_TOOLS_URL\`" >> patch_instructions.md
+            echo "" >> patch_instructions.md
+          fi
+          
+          if [ -n "${VALID_SDK_PLATFORM_33_URL:-}" ]; then
+            echo "### SDK Platform API 33" >> patch_instructions.md
+            echo "URL جدید: \`$VALID_SDK_PLATFORM_33_URL\`" >> patch_instructions.md
+            echo "" >> patch_instructions.md
+          fi
+          
+          if [ -n "${VALID_ANDROID_M2REPO_URL:-}" ]; then
+            echo "### Android M2Repository" >> patch_instructions.md
+            echo "URL جدید: \`$VALID_ANDROID_M2REPO_URL\`" >> patch_instructions.md
+            echo "" >> patch_instructions.md
+          fi
+          
+          if [ -n "${VALID_GOOGLE_M2REPO_URL:-}" ]; then
+            echo "### Google M2Repository" >> patch_instructions.md
+            echo "URL جدید: \`$VALID_GOOGLE_M2REPO_URL\`" >> patch_instructions.md
+            echo "" >> patch_instructions.md
+          fi
+          
+          cat << 'EOF' >> patch_instructions.md
+          ## نحوه اعمال تغییرات
+          
+          1. فایل `.github/workflows/android-offline-complete.yml` را باز کنید
+          2. URL های ناکام را با URL های معتبر جایگزین کنید
+          3. workflow را مجدداً اجرا کنید
+          4. نتایج را بررسی کنید
+          
+          ## نکات مهم
+          
+          - قبل از اعمال تغییرات، backup از workflow اصلی تهیه کنید
+          - پس از اعمال تغییرات، workflow را تست کنید
+          - در صورت بروز مشکل، به نسخه قبلی برگردید
+          EOF
+
+      - name: Upload test results
+        uses: actions/upload-artifact@v4
+        with:
+          name: failed-components-test-results
+          path: |
+            test_results.json
+            patch_instructions.md
+          retention-days: 30
+
+      - name: Display final summary
+        run: |
+          echo "=== گزارش نهایی تست URL های جایگزین ==="
+          echo ""
+          echo "📊 آمار کلی:"
+          total_tests=$(jq 'length' test_results.json)
+          successful_tests=$(jq '[.[] | select(.success == true)] | length' test_results.json)
+          echo "  - تعداد کل تست‌ها: $total_tests"
+          echo "  - تست‌های موفق: $successful_tests"
+          echo "  - تست‌های ناکام: $((total_tests - successful_tests))"
+          echo ""
+          
+          echo "🔍 نتایج جستجو:"
+          components_fixed=0
+          
+          if [ -n "${VALID_PLATFORM_TOOLS_URL:-}" ]; then
+            echo "  ✅ Platform Tools: URL معتبر پیدا شد"
+            components_fixed=$((components_fixed + 1))
+          else
+            echo "  ❌ Platform Tools: URL معتبر پیدا نشد"
+          fi
+          
+          if [ -n "${VALID_SDK_PLATFORM_33_URL:-}" ]; then
+            echo "  ✅ SDK Platform API 33: URL معتبر پیدا شد"
+            components_fixed=$((components_fixed + 1))
+          else
+            echo "  ❌ SDK Platform API 33: URL معتبر پیدا نشد"
+          fi
+          
+          if [ -n "${VALID_ANDROID_M2REPO_URL:-}" ]; then
+            echo "  ✅ Android M2Repository: URL معتبر پیدا شد"
+            components_fixed=$((components_fixed + 1))
+          else
+            echo "  ❌ Android M2Repository: URL معتبر پیدا نشد"
+          fi
+          
+          if [ -n "${VALID_GOOGLE_M2REPO_URL:-}" ]; then
+            echo "  ✅ Google M2Repository: URL معتبر پیدا شد"
+            components_fixed=$((components_fixed + 1))
+          else
+            echo "  ❌ Google M2Repository: URL معتبر پیدا نشد"
+          fi
+          
+          echo ""
+          echo "📈 نتیجه: $components_fixed از 4 کامپوننت ناکام قابل اصلاح است"
+          echo ""
+          echo "📁 فایل‌های تولید شده:"
+          echo "  - test_results.json: نتایج کامل تست‌ها"
+          echo "  - patch_instructions.md: دستورالعمل اصلاح workflow اصلی"
+          echo ""
+          echo "🚀 مرحله بعد: دانلود artifacts و اعمال تغییرات در workflow اصلی"

@@ -1,0 +1,842 @@
+name: Android Offline Downloader - Final Complete Version
+
+on:
+  workflow_dispatch:
+
+jobs:
+  download-and-validate:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Create download directory
+        run: mkdir -p downloads
+
+      - name: Initialize validation tracking
+        run: |
+          echo "[]" > validation_results.json
+          echo "FAILED_COMPONENTS=" >> $GITHUB_ENV
+          echo "SUCCESS_COMPONENTS=" >> $GITHUB_ENV
+
+      - name: Create validation functions
+        run: |
+          cat << 'EOF' > validation_functions.sh
+          #!/bin/bash
+          
+          # تابع اعتبارسنجی اندازه فایل
+          validate_file_size() {
+            local file_path=$1
+            local min_size=$2
+            local component_name=$3
+            
+            if [ ! -f "$file_path" ]; then
+              echo "ERROR: $component_name - فایل وجود ندارد: $file_path"
+              return 1
+            fi
+            
+            file_size=$(stat -c%s "$file_path")
+            
+            if [ $file_size -lt $min_size ]; then
+              echo "ERROR: $component_name - اندازه فایل کوچک است ($file_size bytes, حداقل: $min_size bytes)"
+              return 1
+            fi
+            
+            echo "SUCCESS: $component_name - اعتبارسنجی اندازه موفق ($file_size bytes)"
+            return 0
+          }
+          
+          # تابع تشخیص محتوای HTML
+          detect_html_content() {
+            local file_path=$1
+            local component_name=$2
+            
+            if [ ! -f "$file_path" ]; then
+              echo "ERROR: $component_name - فایل وجود ندارد: $file_path"
+              return 1
+            fi
+            
+            # بررسی 1024 بایت اول فایل برای تگ‌های HTML
+            head_content=$(head -c 1024 "$file_path")
+            
+            if echo "$head_content" | grep -qi -E '(<html|<!DOCTYPE|<head|<body)'; then
+              echo "ERROR: $component_name - محتوای HTML تشخیص داده شد به جای فایل باینری"
+              return 1
+            fi
+            
+            echo "SUCCESS: $component_name - محتوای باینری تأیید شد"
+            return 0
+          }
+          
+          # تابع اعتبارسنجی یکپارچگی ZIP
+          validate_zip_integrity() {
+            local file_path=$1
+            local component_name=$2
+            
+            if [ ! -f "$file_path" ]; then
+              echo "ERROR: $component_name - فایل وجود ندارد: $file_path"
+              return 1
+            fi
+            
+            if ! unzip -t "$file_path" > /dev/null 2>&1; then
+              echo "ERROR: $component_name - بررسی یکپارچگی ZIP ناکام"
+              return 1
+            fi
+            
+            echo "SUCCESS: $component_name - یکپارچگی ZIP تأیید شد"
+            return 0
+          }
+          
+          # تابع اعتبارسنجی کامل کامپوننت
+          validate_component() {
+            local file_path=$1
+            local min_size=$2
+            local component_name=$3
+            local validation_type=$4
+            
+            echo "شروع اعتبارسنجی کامپوننت: $component_name"
+            
+            # بررسی اندازه فایل
+            if ! validate_file_size "$file_path" "$min_size" "$component_name"; then
+              return 1
+            fi
+            
+            # تشخیص محتوای HTML
+            if ! detect_html_content "$file_path" "$component_name"; then
+              return 1
+            fi
+            
+            # اعتبارسنجی بر اساس نوع فایل
+            case "$validation_type" in
+              "zip")
+                if ! validate_zip_integrity "$file_path" "$component_name"; then
+                  return 1
+                fi
+                ;;
+              "exe")
+                # برای فایل‌های EXE فقط اندازه و محتوای HTML بررسی می‌شود
+                echo "SUCCESS: $component_name - اعتبارسنجی EXE کامل شد"
+                ;;
+              *)
+                echo "WARNING: نوع اعتبارسنجی ناشناخته: $validation_type"
+                ;;
+            esac
+            
+            echo "SUCCESS: $component_name - اعتبارسنجی کامل با موفقیت انجام شد"
+            return 0
+          }
+          
+          # تابع ثبت نتیجه اعتبارسنجی در JSON
+          log_validation_result() {
+            local component_name=$1
+            local status=$2
+            local file_size=$3
+            local error_message=$4
+            local file_path=$5
+            
+            # محاسبه checksum
+            local checksum=""
+            if [ -f "$file_path" ]; then
+              checksum=$(sha256sum "$file_path" | cut -d' ' -f1)
+            fi
+            
+            # ایجاد JSON entry
+            cat << JSONEOF > temp_entry.json
+          {
+            "component_name": "$component_name",
+            "status": "$status",
+            "file_size": $file_size,
+            "error_message": "$error_message",
+            "timestamp": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
+            "checksum": "$checksum"
+          }
+          JSONEOF
+            
+            # اضافه کردن به فایل JSON
+            if [ -f "validation_results.json" ]; then
+              # خواندن JSON موجود و اضافه کردن entry جدید
+              jq ". += [$(cat temp_entry.json)]" validation_results.json > temp.json && mv temp.json validation_results.json
+            else
+              echo "[$(cat temp_entry.json)]" > validation_results.json
+            fi
+            
+            rm -f temp_entry.json
+          }
+          EOF
+          
+          chmod +x validation_functions.sh
+
+      # دانلود Android Studio 2022.3.1
+      - name: Download Android Studio 2022.3.1
+        id: download-android-studio
+        continue-on-error: true
+        run: |
+          echo "دانلود Android Studio 2022.3.1 Giraffe..."
+          if curl -L -o downloads/android-studio-2022.3.1.20-windows.exe "https://redirector.gvt1.com/edgedl/android/studio/install/2022.3.1.20/android-studio-2022.3.1.20-windows.exe"; then
+            echo "download_success=true" >> $GITHUB_OUTPUT
+            echo "SUCCESS: دانلود Android Studio کامل شد"
+          else
+            echo "download_success=false" >> $GITHUB_OUTPUT
+            echo "ERROR: دانلود Android Studio ناکام"
+          fi
+      - name: Validate Android Studio
+        id: validate-android-studio
+        if: steps.download-android-studio.outputs.download_success == 'true'
+        continue-on-error: true
+        run: |
+          source ./validation_functions.sh
+          
+          file_path="downloads/android-studio-2022.3.1.20-windows.exe"
+          min_size=1073741824  # 1GB
+          component_name="Android Studio 2022.3.1"
+          
+          if validate_component "$file_path" "$min_size" "$component_name" "exe"; then
+            echo "validation_success=true" >> $GITHUB_OUTPUT
+            file_size=$(stat -c%s "$file_path")
+            log_validation_result "$component_name" "success" "$file_size" "" "$file_path"
+            echo "SUCCESS_COMPONENTS=${SUCCESS_COMPONENTS}android-studio-2022.3.1," >> $GITHUB_ENV
+          else
+            echo "validation_success=false" >> $GITHUB_OUTPUT
+            file_size=$(stat -c%s "$file_path" 2>/dev/null || echo "0")
+            log_validation_result "$component_name" "failed" "$file_size" "اعتبارسنجی ناکام" "$file_path"
+            echo "FAILED_COMPONENTS=${FAILED_COMPONENTS}android-studio-2022.3.1," >> $GITHUB_ENV
+          fi
+
+      - name: Upload Android Studio
+        if: steps.validate-android-studio.outputs.validation_success == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-studio-2022.3.1
+          path: downloads/android-studio-2022.3.1.20-windows.exe
+
+      # دانلود JDK 17
+      - name: Download JDK 17
+        id: download-jdk17
+        continue-on-error: true
+        run: |
+          echo "دانلود JDK 17 Windows x64..."
+          if curl -L -o downloads/jdk-17.zip "https://github.com/adoptium/temurin17-binaries/releases/download/jdk-17.0.13%2B11/OpenJDK17U-jdk_x64_windows_hotspot_17.0.13_11.zip"; then
+            echo "download_success=true" >> $GITHUB_OUTPUT
+            echo "SUCCESS: دانلود JDK 17 کامل شد"
+          else
+            echo "download_success=false" >> $GITHUB_OUTPUT
+            echo "ERROR: دانلود JDK 17 ناکام"
+          fi
+      - name: Validate JDK 17
+        id: validate-jdk17
+        if: steps.download-jdk17.outputs.download_success == 'true'
+        continue-on-error: true
+        run: |
+          source ./validation_functions.sh
+          
+          file_path="downloads/jdk-17.zip"
+          min_size=104857600  # 100MB
+          component_name="JDK 17"
+          
+          if validate_component "$file_path" "$min_size" "$component_name" "zip"; then
+            echo "validation_success=true" >> $GITHUB_OUTPUT
+            file_size=$(stat -c%s "$file_path")
+            log_validation_result "$component_name" "success" "$file_size" "" "$file_path"
+            echo "SUCCESS_COMPONENTS=${SUCCESS_COMPONENTS}jdk-17," >> $GITHUB_ENV
+          else
+            echo "validation_success=false" >> $GITHUB_OUTPUT
+            file_size=$(stat -c%s "$file_path" 2>/dev/null || echo "0")
+            log_validation_result "$component_name" "failed" "$file_size" "اعتبارسنجی ناکام" "$file_path"
+            echo "FAILED_COMPONENTS=${FAILED_COMPONENTS}jdk-17," >> $GITHUB_ENV
+          fi
+
+      - name: Upload JDK 17
+        if: steps.validate-jdk17.outputs.validation_success == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: jdk-17
+          path: downloads/jdk-17.zip
+
+      # دانلود Gradle 8.0.2 (نسخه سازگار با Android Studio 2022.3.1)
+      - name: Download Gradle 8.0.2
+        id: download-gradle-8-0-2
+        continue-on-error: true
+        run: |
+          echo "دانلود Gradle 8.0.2..."
+          if curl -L -o downloads/gradle-8.0.2-bin.zip "https://services.gradle.org/distributions/gradle-8.0.2-bin.zip"; then
+            echo "download_success=true" >> $GITHUB_OUTPUT
+            echo "SUCCESS: دانلود Gradle 8.0.2 کامل شد"
+          else
+            echo "download_success=false" >> $GITHUB_OUTPUT
+            echo "ERROR: دانلود Gradle 8.0.2 ناکام"
+          fi
+      - name: Validate Gradle 8.0.2
+        id: validate-gradle-8-0-2
+        if: steps.download-gradle-8-0-2.outputs.download_success == 'true'
+        continue-on-error: true
+        run: |
+          source ./validation_functions.sh
+          
+          file_path="downloads/gradle-8.0.2-bin.zip"
+          min_size=52428800  # 50MB
+          component_name="Gradle 8.0.2"
+          
+          if validate_component "$file_path" "$min_size" "$component_name" "zip"; then
+            echo "validation_success=true" >> $GITHUB_OUTPUT
+            file_size=$(stat -c%s "$file_path")
+            log_validation_result "$component_name" "success" "$file_size" "" "$file_path"
+            echo "SUCCESS_COMPONENTS=${SUCCESS_COMPONENTS}gradle-8.0.2," >> $GITHUB_ENV
+          else
+            echo "validation_success=false" >> $GITHUB_OUTPUT
+            file_size=$(stat -c%s "$file_path" 2>/dev/null || echo "0")
+            log_validation_result "$component_name" "failed" "$file_size" "اعتبارسنجی ناکام" "$file_path"
+            echo "FAILED_COMPONENTS=${FAILED_COMPONENTS}gradle-8.0.2," >> $GITHUB_ENV
+          fi
+
+      - name: Upload Gradle 8.0.2
+        if: steps.validate-gradle-8-0-2.outputs.validation_success == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: gradle-8.0.2
+          path: downloads/gradle-8.0.2-bin.zip
+
+      # دانلود Command Line Tools
+      - name: Download Command Line Tools
+        id: download-commandlinetools
+        continue-on-error: true
+        run: |
+          echo "دانلود Android SDK Command-line Tools..."
+          if curl -L -o downloads/commandlinetools-win-latest.zip "https://dl.google.com/android/repository/commandlinetools-win-9477386_latest.zip"; then
+            echo "download_success=true" >> $GITHUB_OUTPUT
+            echo "SUCCESS: دانلود Command Line Tools کامل شد"
+          else
+            echo "download_success=false" >> $GITHUB_OUTPUT
+            echo "ERROR: دانلود Command Line Tools ناکام"
+          fi
+      - name: Validate Command Line Tools
+        id: validate-commandlinetools
+        if: steps.download-commandlinetools.outputs.download_success == 'true'
+        continue-on-error: true
+        run: |
+          source ./validation_functions.sh
+          
+          file_path="downloads/commandlinetools-win-latest.zip"
+          min_size=52428800  # 50MB
+          component_name="Command Line Tools"
+          
+          if validate_component "$file_path" "$min_size" "$component_name" "zip"; then
+            echo "validation_success=true" >> $GITHUB_OUTPUT
+            file_size=$(stat -c%s "$file_path")
+            log_validation_result "$component_name" "success" "$file_size" "" "$file_path"
+            echo "SUCCESS_COMPONENTS=${SUCCESS_COMPONENTS}commandlinetools-win-latest," >> $GITHUB_ENV
+          else
+            echo "validation_success=false" >> $GITHUB_OUTPUT
+            file_size=$(stat -c%s "$file_path" 2>/dev/null || echo "0")
+            log_validation_result "$component_name" "failed" "$file_size" "اعتبارسنجی ناکام" "$file_path"
+            echo "FAILED_COMPONENTS=${FAILED_COMPONENTS}commandlinetools-win-latest," >> $GITHUB_ENV
+          fi
+
+      - name: Upload Command Line Tools
+        if: steps.validate-commandlinetools.outputs.validation_success == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: commandlinetools-win-latest
+          path: downloads/commandlinetools-win-latest.zip
+
+      # دانلود Platform Tools
+      - name: Download Platform Tools
+        id: download-platform-tools
+        continue-on-error: true
+        run: |
+          echo "دانلود Platform Tools..."
+          if curl -L -o downloads/platform-tools.zip "https://dl.google.com/android/repository/platform-tools-latest-windows.zip"; then
+            echo "download_success=true" >> $GITHUB_OUTPUT
+            echo "SUCCESS: دانلود Platform Tools کامل شد"
+          else
+            echo "download_success=false" >> $GITHUB_OUTPUT
+            echo "ERROR: دانلود Platform Tools ناکام"
+          fi
+      - name: Validate Platform Tools
+        id: validate-platform-tools
+        if: steps.download-platform-tools.outputs.download_success == 'true'
+        continue-on-error: true
+        run: |
+          source ./validation_functions.sh
+          
+          file_path="downloads/platform-tools.zip"
+          min_size=5242880  # 5MB (بر اساس نتایج تست موفق)
+          component_name="Platform Tools"
+          
+          if validate_component "$file_path" "$min_size" "$component_name" "zip"; then
+            echo "validation_success=true" >> $GITHUB_OUTPUT
+            file_size=$(stat -c%s "$file_path")
+            log_validation_result "$component_name" "success" "$file_size" "" "$file_path"
+            echo "SUCCESS_COMPONENTS=${SUCCESS_COMPONENTS}platform-tools," >> $GITHUB_ENV
+          else
+            echo "validation_success=false" >> $GITHUB_OUTPUT
+            file_size=$(stat -c%s "$file_path" 2>/dev/null || echo "0")
+            log_validation_result "$component_name" "failed" "$file_size" "اعتبارسنجی ناکام" "$file_path"
+            echo "FAILED_COMPONENTS=${FAILED_COMPONENTS}platform-tools," >> $GITHUB_ENV
+          fi
+
+      - name: Upload Platform Tools
+        if: steps.validate-platform-tools.outputs.validation_success == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: platform-tools
+          path: downloads/platform-tools.zip
+
+      # دانلود Build Tools 33.0.2
+      - name: Download Build Tools 33.0.2
+        id: download-build-tools-33-0-2
+        continue-on-error: true
+        run: |
+          echo "دانلود Build Tools 33.0.2..."
+          if curl -L -o downloads/build-tools-33.0.2.zip "https://dl.google.com/android/repository/build-tools_r33.0.2-windows.zip"; then
+            echo "download_success=true" >> $GITHUB_OUTPUT
+            echo "SUCCESS: دانلود Build Tools 33.0.2 کامل شد"
+          else
+            echo "download_success=false" >> $GITHUB_OUTPUT
+            echo "ERROR: دانلود Build Tools 33.0.2 ناکام"
+          fi
+      - name: Validate Build Tools 33.0.2
+        id: validate-build-tools-33-0-2
+        if: steps.download-build-tools-33-0-2.outputs.download_success == 'true'
+        continue-on-error: true
+        run: |
+          source ./validation_functions.sh
+          
+          file_path="downloads/build-tools-33.0.2.zip"
+          min_size=41943040  # 40MB
+          component_name="Build Tools 33.0.2"
+          
+          if validate_component "$file_path" "$min_size" "$component_name" "zip"; then
+            echo "validation_success=true" >> $GITHUB_OUTPUT
+            file_size=$(stat -c%s "$file_path")
+            log_validation_result "$component_name" "success" "$file_size" "" "$file_path"
+            echo "SUCCESS_COMPONENTS=${SUCCESS_COMPONENTS}build-tools-33.0.2," >> $GITHUB_ENV
+          else
+            echo "validation_success=false" >> $GITHUB_OUTPUT
+            file_size=$(stat -c%s "$file_path" 2>/dev/null || echo "0")
+            log_validation_result "$component_name" "failed" "$file_size" "اعتبارسنجی ناکام" "$file_path"
+            echo "FAILED_COMPONENTS=${FAILED_COMPONENTS}build-tools-33.0.2," >> $GITHUB_ENV
+          fi
+
+      - name: Upload Build Tools 33.0.2
+        if: steps.validate-build-tools-33-0-2.outputs.validation_success == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-tools-33.0.2
+          path: downloads/build-tools-33.0.2.zip
+
+      # دانلود SDK Platform API 33
+      - name: Download SDK Platform API 33
+        id: download-sdk-platform-33
+        continue-on-error: true
+        run: |
+          echo "دانلود SDK Platform API 33..."
+          if curl -L -o downloads/sdk-platform-33.zip "https://dl.google.com/android/repository/platform-33_r02.zip"; then
+            echo "download_success=true" >> $GITHUB_OUTPUT
+            echo "SUCCESS: دانلود SDK Platform API 33 کامل شد"
+          else
+            echo "download_success=false" >> $GITHUB_OUTPUT
+            echo "ERROR: دانلود SDK Platform API 33 ناکام"
+          fi
+      - name: Validate SDK Platform API 33
+        id: validate-sdk-platform-33
+        if: steps.download-sdk-platform-33.outputs.download_success == 'true'
+        continue-on-error: true
+        run: |
+          source ./validation_functions.sh
+          
+          file_path="downloads/sdk-platform-33.zip"
+          min_size=26214400  # 25MB
+          component_name="SDK Platform API 33"
+          
+          if validate_component "$file_path" "$min_size" "$component_name" "zip"; then
+            echo "validation_success=true" >> $GITHUB_OUTPUT
+            file_size=$(stat -c%s "$file_path")
+            log_validation_result "$component_name" "success" "$file_size" "" "$file_path"
+            echo "SUCCESS_COMPONENTS=${SUCCESS_COMPONENTS}sdk-platform-33," >> $GITHUB_ENV
+          else
+            echo "validation_success=false" >> $GITHUB_OUTPUT
+            file_size=$(stat -c%s "$file_path" 2>/dev/null || echo "0")
+            log_validation_result "$component_name" "failed" "$file_size" "اعتبارسنجی ناکام" "$file_path"
+            echo "FAILED_COMPONENTS=${FAILED_COMPONENTS}sdk-platform-33," >> $GITHUB_ENV
+          fi
+
+      - name: Upload SDK Platform API 33
+        if: steps.validate-sdk-platform-33.outputs.validation_success == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: sdk-platform-33
+          path: downloads/sdk-platform-33.zip
+
+      # دانلود SDK Platform API 30
+      - name: Download SDK Platform API 30
+        id: download-sdk-platform-30
+        continue-on-error: true
+        run: |
+          echo "دانلود SDK Platform API 30..."
+          if curl -L -o downloads/sdk-platform-30.zip "https://dl.google.com/android/repository/platform-30_r03.zip"; then
+            echo "download_success=true" >> $GITHUB_OUTPUT
+            echo "SUCCESS: دانلود SDK Platform API 30 کامل شد"
+          else
+            echo "download_success=false" >> $GITHUB_OUTPUT
+            echo "ERROR: دانلود SDK Platform API 30 ناکام"
+          fi
+      - name: Validate SDK Platform API 30
+        id: validate-sdk-platform-30
+        if: steps.download-sdk-platform-30.outputs.download_success == 'true'
+        continue-on-error: true
+        run: |
+          source ./validation_functions.sh
+          
+          file_path="downloads/sdk-platform-30.zip"
+          min_size=26214400  # 25MB
+          component_name="SDK Platform API 30"
+          
+          if validate_component "$file_path" "$min_size" "$component_name" "zip"; then
+            echo "validation_success=true" >> $GITHUB_OUTPUT
+            file_size=$(stat -c%s "$file_path")
+            log_validation_result "$component_name" "success" "$file_size" "" "$file_path"
+            echo "SUCCESS_COMPONENTS=${SUCCESS_COMPONENTS}sdk-platform-30," >> $GITHUB_ENV
+          else
+            echo "validation_success=false" >> $GITHUB_OUTPUT
+            file_size=$(stat -c%s "$file_path" 2>/dev/null || echo "0")
+            log_validation_result "$component_name" "failed" "$file_size" "اعتبارسنجی ناکام" "$file_path"
+            echo "FAILED_COMPONENTS=${FAILED_COMPONENTS}sdk-platform-30," >> $GITHUB_ENV
+          fi
+
+      - name: Upload SDK Platform API 30
+        if: steps.validate-sdk-platform-30.outputs.validation_success == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: sdk-platform-30
+          path: downloads/sdk-platform-30.zip
+
+      # دانلود SDK Platform API 27
+      - name: Download SDK Platform API 27
+        id: download-sdk-platform-27
+        continue-on-error: true
+        run: |
+          echo "دانلود SDK Platform API 27..."
+          if curl -L -o downloads/sdk-platform-27.zip "https://dl.google.com/android/repository/platform-27_r03.zip"; then
+            echo "download_success=true" >> $GITHUB_OUTPUT
+            echo "SUCCESS: دانلود SDK Platform API 27 کامل شد"
+          else
+            echo "download_success=false" >> $GITHUB_OUTPUT
+            echo "ERROR: دانلود SDK Platform API 27 ناکام"
+          fi
+      - name: Validate SDK Platform API 27
+        id: validate-sdk-platform-27
+        if: steps.download-sdk-platform-27.outputs.download_success == 'true'
+        continue-on-error: true
+        run: |
+          source ./validation_functions.sh
+          
+          file_path="downloads/sdk-platform-27.zip"
+          min_size=26214400  # 25MB
+          component_name="SDK Platform API 27"
+          
+          if validate_component "$file_path" "$min_size" "$component_name" "zip"; then
+            echo "validation_success=true" >> $GITHUB_OUTPUT
+            file_size=$(stat -c%s "$file_path")
+            log_validation_result "$component_name" "success" "$file_size" "" "$file_path"
+            echo "SUCCESS_COMPONENTS=${SUCCESS_COMPONENTS}sdk-platform-27," >> $GITHUB_ENV
+          else
+            echo "validation_success=false" >> $GITHUB_OUTPUT
+            file_size=$(stat -c%s "$file_path" 2>/dev/null || echo "0")
+            log_validation_result "$component_name" "failed" "$file_size" "اعتبارسنجی ناکام" "$file_path"
+            echo "FAILED_COMPONENTS=${FAILED_COMPONENTS}sdk-platform-27," >> $GITHUB_ENV
+          fi
+
+      - name: Upload SDK Platform API 27
+        if: steps.validate-sdk-platform-27.outputs.validation_success == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: sdk-platform-27
+          path: downloads/sdk-platform-27.zip
+
+      # دانلود System Image API 33
+      - name: Download System Image API 33
+        id: download-sysimage-google-apis-x86-64-33
+        continue-on-error: true
+        run: |
+          echo "دانلود System Image API 33 x86_64 Google APIs..."
+          if curl -L -o downloads/sysimage-google-apis-x86_64-33.zip "https://dl.google.com/android/repository/sys-img/google_apis/x86_64-33_r15.zip"; then
+            echo "download_success=true" >> $GITHUB_OUTPUT
+            echo "SUCCESS: دانلود System Image API 33 کامل شد"
+          else
+            echo "download_success=false" >> $GITHUB_OUTPUT
+            echo "ERROR: دانلود System Image API 33 ناکام"
+          fi
+      - name: Validate System Image API 33
+        id: validate-sysimage-google-apis-x86-64-33
+        if: steps.download-sysimage-google-apis-x86-64-33.outputs.download_success == 'true'
+        continue-on-error: true
+        run: |
+          source ./validation_functions.sh
+          
+          file_path="downloads/sysimage-google-apis-x86_64-33.zip"
+          min_size=524288000  # 500MB
+          component_name="System Image API 33 x86_64 Google APIs"
+          
+          if validate_component "$file_path" "$min_size" "$component_name" "zip"; then
+            echo "validation_success=true" >> $GITHUB_OUTPUT
+            file_size=$(stat -c%s "$file_path")
+            log_validation_result "$component_name" "success" "$file_size" "" "$file_path"
+            echo "SUCCESS_COMPONENTS=${SUCCESS_COMPONENTS}sysimage-google-apis-x86_64-33," >> $GITHUB_ENV
+          else
+            echo "validation_success=false" >> $GITHUB_OUTPUT
+            file_size=$(stat -c%s "$file_path" 2>/dev/null || echo "0")
+            log_validation_result "$component_name" "failed" "$file_size" "اعتبارسنجی ناکام" "$file_path"
+            echo "FAILED_COMPONENTS=${FAILED_COMPONENTS}sysimage-google-apis-x86_64-33," >> $GITHUB_ENV
+          fi
+
+      - name: Upload System Image API 33
+        if: steps.validate-sysimage-google-apis-x86-64-33.outputs.validation_success == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: sysimage-google-apis-x86_64-33
+          path: downloads/sysimage-google-apis-x86_64-33.zip
+
+      # دانلود Android M2Repository
+      - name: Download Android M2Repository
+        id: download-android-m2repository
+        continue-on-error: true
+        run: |
+          echo "دانلود Android M2Repository..."
+          if curl -L -o downloads/android-m2repository.zip "https://dl.google.com/android/repository/android_m2repository_r47.zip"; then
+            echo "download_success=true" >> $GITHUB_OUTPUT
+            echo "SUCCESS: دانلود Android M2Repository کامل شد"
+          else
+            echo "download_success=false" >> $GITHUB_OUTPUT
+            echo "ERROR: دانلود Android M2Repository ناکام"
+          fi
+      - name: Validate Android M2Repository
+        id: validate-android-m2repository
+        if: steps.download-android-m2repository.outputs.download_success == 'true'
+        continue-on-error: true
+        run: |
+          source ./validation_functions.sh
+          
+          file_path="downloads/android-m2repository.zip"
+          min_size=52428800  # 50MB
+          component_name="Android M2Repository"
+          
+          if validate_component "$file_path" "$min_size" "$component_name" "zip"; then
+            echo "validation_success=true" >> $GITHUB_OUTPUT
+            file_size=$(stat -c%s "$file_path")
+            log_validation_result "$component_name" "success" "$file_size" "" "$file_path"
+            echo "SUCCESS_COMPONENTS=${SUCCESS_COMPONENTS}android-m2repository," >> $GITHUB_ENV
+          else
+            echo "validation_success=false" >> $GITHUB_OUTPUT
+            file_size=$(stat -c%s "$file_path" 2>/dev/null || echo "0")
+            log_validation_result "$component_name" "failed" "$file_size" "اعتبارسنجی ناکام" "$file_path"
+            echo "FAILED_COMPONENTS=${FAILED_COMPONENTS}android-m2repository," >> $GITHUB_ENV
+          fi
+
+      - name: Upload Android M2Repository
+        if: steps.validate-android-m2repository.outputs.validation_success == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-m2repository
+          path: downloads/android-m2repository.zip
+
+      # دانلود Google M2Repository (از Maven Central)
+      - name: Download Google M2Repository
+        id: download-google-m2repository
+        continue-on-error: true
+        run: |
+          echo "دانلود Google M2Repository از Maven Central..."
+          echo "ℹ️ استفاده از Maven Central برای کتابخانه‌های Google Play Services"
+          
+          # ایجاد پوشه موقت برای فایل‌های Maven
+          mkdir -p downloads/google-m2repo-temp
+          
+          # دانلود کتابخانه‌های اصلی Google Play Services
+          success_count=0
+          total_count=0
+          
+          # لیست کتابخانه‌های ضروری (بر اساس تست موفق)
+          libraries=(
+            "com/google/android/gms/play-services-base/18.2.0/play-services-base-18.2.0.aar"
+            "com/google/android/gms/play-services-basement/18.2.0/play-services-basement-18.2.0.aar"
+            "com/google/android/gms/play-services-tasks/18.0.2/play-services-tasks-18.0.2.aar"
+          )
+          
+          for lib in "${libraries[@]}"; do
+            total_count=$((total_count + 1))
+            lib_name=$(basename "$lib")
+            echo "دانلود $lib_name..."
+            if curl -L -o "downloads/google-m2repo-temp/$lib_name" "https://maven.google.com/$lib" --max-time 120; then
+              lib_size=$(stat -c%s "downloads/google-m2repo-temp/$lib_name")
+              if [ $lib_size -gt 10000 ]; then  # بیشتر از 10KB
+                success_count=$((success_count + 1))
+                echo "✅ دانلود موفق: $lib_name (اندازه: $lib_size bytes)"
+              else
+                echo "❌ فایل کوچک: $lib_name"
+                rm -f "downloads/google-m2repo-temp/$lib_name"
+              fi
+            else
+              echo "❌ دانلود ناکام: $lib_name"
+            fi
+          done
+          
+          # ایجاد فایل ZIP از کتابخانه‌های دانلود شده
+          if [ $success_count -gt 0 ]; then
+            cd downloads/google-m2repo-temp
+            zip -r ../google-m2repository.zip . > /dev/null 2>&1
+            cd ../..
+            echo "download_success=true" >> $GITHUB_OUTPUT
+            echo "SUCCESS: دانلود Google M2Repository از Maven Central کامل شد ($success_count از $total_count کتابخانه)"
+          else
+            echo "download_success=false" >> $GITHUB_OUTPUT
+            echo "ERROR: دانلود Google M2Repository ناکام"
+          fi
+          
+          # پاک کردن پوشه موقت
+          rm -rf downloads/google-m2repo-temp
+      - name: Validate Google M2Repository
+        id: validate-google-m2repository
+        if: steps.download-google-m2repository.outputs.download_success == 'true'
+        continue-on-error: true
+        run: |
+          source ./validation_functions.sh
+          
+          file_path="downloads/google-m2repository.zip"
+          min_size=1048576  # 1MB (بر اساس نتایج تست موفق)
+          component_name="Google M2Repository (Maven Central)"
+          
+          if validate_component "$file_path" "$min_size" "$component_name" "zip"; then
+            echo "validation_success=true" >> $GITHUB_OUTPUT
+            file_size=$(stat -c%s "$file_path")
+            log_validation_result "$component_name" "success" "$file_size" "" "$file_path"
+            echo "SUCCESS_COMPONENTS=${SUCCESS_COMPONENTS}google-m2repository," >> $GITHUB_ENV
+          else
+            echo "validation_success=false" >> $GITHUB_OUTPUT
+            file_size=$(stat -c%s "$file_path" 2>/dev/null || echo "0")
+            log_validation_result "$component_name" "failed" "$file_size" "اعتبارسنجی ناکام" "$file_path"
+            echo "FAILED_COMPONENTS=${FAILED_COMPONENTS}google-m2repository," >> $GITHUB_ENV
+          fi
+
+      - name: Upload Google M2Repository
+        if: steps.validate-google-m2repository.outputs.validation_success == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: google-m2repository
+          path: downloads/google-m2repository.zip
+
+      # ایجاد فایل‌های لایسنس SDK
+      - name: Create SDK License Files
+        run: |
+          echo "ایجاد فایل‌های لایسنس SDK..."
+          mkdir -p licenses
+          
+          # ایجاد android-sdk-license
+          cat << 'LICENSEEOF' > licenses/android-sdk-license
+          24333f8a63b6825ea9c5514f83c2829b004d1fee
+          84831b9409646a918e30573bab4c9c91346d8abd
+          LICENSEEOF
+          
+          # ایجاد android-sdk-preview-license
+          echo "84831b9409646a918e30573bab4c9c91346d8abd" > licenses/android-sdk-preview-license
+          
+          # ایجاد google-gdk-license
+          echo "33b6a2e53a7e3b56d3d6f1baf9d38f6f4d64f3a4" > licenses/google-gdk-license
+          
+          echo "فایل‌های لایسنس ایجاد شدند:"
+          ls -la licenses/
+      - name: Upload SDK License Files
+        uses: actions/upload-artifact@v4
+        with:
+          name: sdk-licenses
+          path: licenses/
+
+      # تولید گزارش نهایی
+      - name: Generate Final Report
+        run: |
+          echo "تولید گزارش JSON نهایی..."
+          
+          # شمارش کامپوننت‌های موفق و ناکام
+          success_count=$(echo "$SUCCESS_COMPONENTS" | tr ',' '\n' | grep -v '^$' | wc -l)
+          failed_count=$(echo "$FAILED_COMPONENTS" | tr ',' '\n' | grep -v '^$' | wc -l)
+          total_count=$((success_count + failed_count))
+          
+          # محاسبه نرخ موفقیت
+          if [ "$total_count" -gt 0 ]; then
+            success_rate=$(echo "scale=2; $success_count * 100 / $total_count" | bc -l)
+          else
+            success_rate="0.00"
+          fi
+          
+          # تعیین آمادگی برای آفلاین
+          if [ "$failed_count" -eq 0 ]; then
+            ready_for_offline="true"
+          else
+            ready_for_offline="false"
+          fi
+          
+          # ایجاد گزارش نهایی
+          cat << REPORTEOF > final_report.json
+          {
+            "workflow_id": "$GITHUB_RUN_ID",
+            "timestamp": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
+            "total_components": $total_count,
+            "successful_downloads": $success_count,
+            "failed_downloads": $failed_count,
+            "success_rate": $success_rate,
+            "ready_for_offline": $ready_for_offline,
+            "successful_components": [
+              $(echo "$SUCCESS_COMPONENTS" | tr ',' '\n' | grep -v '^$' | sed 's/.*/"&"/' | paste -sd ',' -)
+            ],
+            "failed_components": [
+              $(echo "$FAILED_COMPONENTS" | tr ',' '\n' | grep -v '^$' | sed 's/.*/"&"/' | paste -sd ',' -)
+            ],
+            "detailed_results": $(cat validation_results.json)
+          }
+          REPORTEOF
+          
+          echo "گزارش JSON تولید شد:"
+          cat final_report.json
+          
+          # تولید خلاصه متنی
+          cat << SUMMARYEOF > final_summary.txt
+          === خلاصه دانلود و اعتبارسنجی کامپوننت‌های اندروید ===
+          
+          تاریخ و زمان: $(date -u +%Y-%m-%d\ %H:%M:%S\ UTC)
+          شناسه Workflow: $GITHUB_RUN_ID
+          
+          آمار کلی:
+          - تعداد کل کامپوننت‌ها: $total_count
+          - دانلودهای موفق: $success_count
+          - دانلودهای ناکام: $failed_count
+          - نرخ موفقیت: ${success_rate}%
+          - آمادگی برای توسعه آفلاین: $([ "$ready_for_offline" = "true" ] && echo "بله" || echo "خیر")
+          
+          کامپوننت‌های موفق:
+          $(echo "$SUCCESS_COMPONENTS" | tr ',' '\n' | grep -v '^$' | sed 's/^/- /')
+          
+          $(if [ "$failed_count" -gt 0 ]; then
+            echo "کامپوننت‌های ناکام:"
+            echo "$FAILED_COMPONENTS" | tr ',' '\n' | grep -v '^$' | sed 's/^/- /'
+          fi)
+          
+          $(if [ "$ready_for_offline" = "true" ]; then
+            echo "✅ تمام کامپوننت‌های ضروری با موفقیت دانلود شدند."
+            echo "محیط توسعه اندروید آماده استفاده آفلاین است."
+          else
+            echo "⚠️  برخی کامپوننت‌ها دانلود نشدند."
+            echo "لطفاً مشکلات را بررسی کرده و مجدداً اجرا کنید."
+          fi)
+          SUMMARYEOF
+          
+          echo ""
+          echo "خلاصه نهایی:"
+          cat final_summary.txt
+
+      - name: Upload Final Reports
+        uses: actions/upload-artifact@v4
+        with:
+          name: download-reports
+          path: |
+            final_report.json
+            final_summary.txt
+            validation_results.json

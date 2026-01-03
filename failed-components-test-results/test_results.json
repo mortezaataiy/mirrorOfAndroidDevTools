@@ -1,0 +1,122 @@
+[
+  {
+    "url": "https://dl.google.com/android/repository/platform-tools_r34.0.5-windows.zip",
+    "component_name": "Platform Tools",
+    "success": false,
+    "file_size": 5909544,
+    "download_time": 0,
+    "error_message": "اندازه کوچک",
+    "checksum": "",
+    "timestamp": "2026-01-03T08:37:33Z"
+  },
+  {
+    "url": "https://dl.google.com/android/repository/platform-tools_r33.0.2-windows.zip",
+    "component_name": "Platform Tools",
+    "success": false,
+    "file_size": 6304111,
+    "download_time": 3,
+    "error_message": "اندازه کوچک",
+    "checksum": "",
+    "timestamp": "2026-01-03T08:37:36Z"
+  },
+  {
+    "url": "https://dl.google.com/android/repository/platform-tools-latest-windows.zip",
+    "component_name": "Platform Tools",
+    "success": false,
+    "file_size": 7138784,
+    "download_time": 0,
+    "error_message": "اندازه کوچک",
+    "checksum": "",
+    "timestamp": "2026-01-03T08:37:36Z"
+  },
+  {
+    "url": "https://dl.google.com/android/repository/platform-tools_r35.0.0-windows.zip",
+    "component_name": "Platform Tools",
+    "success": false,
+    "file_size": 6542858,
+    "download_time": 2,
+    "error_message": "اندازه کوچک",
+    "checksum": "",
+    "timestamp": "2026-01-03T08:37:38Z"
+  },
+  {
+    "url": "https://dl.google.com/android/repository/platform-33_r02.zip",
+    "component_name": "SDK Platform API 33",
+    "success": true,
+    "file_size": 67334130,
+    "download_time": 4,
+    "error_message": "",
+    "checksum": "f851b13fe89f8510a1250df5e8593e86176b2428f4f3cbe0e304a85818c07bc8",
+    "timestamp": "2026-01-03T08:37:43Z"
+  },
+  {
+    "url": "https://dl.google.com/android/repository/android_m2repository_r57.zip",
+    "component_name": "Android M2Repository",
+    "success": false,
+    "file_size": 1449,
+    "download_time": 0,
+    "error_message": "اندازه کوچک",
+    "checksum": "",
+    "timestamp": "2026-01-03T08:37:43Z"
+  },
+  {
+    "url": "https://dl.google.com/android/repository/android_m2repository_r56.zip",
+    "component_name": "Android M2Repository",
+    "success": false,
+    "file_size": 1449,
+    "download_time": 0,
+    "error_message": "اندازه کوچک",
+    "checksum": "",
+    "timestamp": "2026-01-03T08:37:43Z"
+  },
+  {
+    "url": "https://dl.google.com/android/repository/android_m2repository_r47.zip",
+    "component_name": "Android M2Repository",
+    "success": true,
+    "file_size": 355529608,
+    "download_time": 2,
+    "error_message": "",
+    "checksum": "a3f91808dce50c1717737de90c18479ed3a78b147e06985247d138e7ab5123d0",
+    "timestamp": "2026-01-03T08:37:47Z"
+  },
+  {
+    "url": "https://dl.google.com/android/repository/google_m2repository_r201.zip",
+    "component_name": "Google M2Repository",
+    "success": false,
+    "file_size": 1449,
+    "download_time": 0,
+    "error_message": "اندازه کوچک",
+    "checksum": "",
+    "timestamp": "2026-01-03T08:37:47Z"
+  },
+  {
+    "url": "https://dl.google.com/android/repository/google_m2repository_r200.zip",
+    "component_name": "Google M2Repository",
+    "success": false,
+    "file_size": 1449,
+    "download_time": 0,
+    "error_message": "اندازه کوچک",
+    "checksum": "",
+    "timestamp": "2026-01-03T08:37:47Z"
+  },
+  {
+    "url": "https://dl.google.com/android/repository/google_m2repository_r199.zip",
+    "component_name": "Google M2Repository",
+    "success": false,
+    "file_size": 1449,
+    "download_time": 1,
+    "error_message": "اندازه کوچک",
+    "checksum": "",
+    "timestamp": "2026-01-03T08:37:48Z"
+  },
+  {
+    "url": "https://dl.google.com/android/repository/google_m2repository_r58.zip",
+    "component_name": "Google M2Repository",
+    "success": false,
+    "file_size": 1449,
+    "download_time": 0,
+    "error_message": "اندازه کوچک",
+    "checksum": "",
+    "timestamp": "2026-01-03T08:37:48Z"
+  }
+]
