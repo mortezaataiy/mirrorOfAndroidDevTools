@@ -3,6 +3,28 @@
 ## درباره پروژه
 این پروژه یک **mirror کامل و آفلاین** از تمامی ابزارهای مورد نیاز برای توسعه اندروید در ویندوز است. هدف اصلی ایجاد یک محیط توسعه کاملاً مستقل از اینترنت پس از دانلود اولیه است.
 
+## فلو پروژه
+
+پروژه شامل سه بخش اصلی است:
+
+### 1. فلو تست URL و آماده‌سازی دانلود
+- **GitHub Actions Workflow** (`android-offline-complete.yml`) - 842 خط
+- دانلود و اعتبارسنجی 13 کامپوننت اندروید
+- ذخیره‌سازی به عنوان artifacts جداگانه
+- اعتبارسنجی یکپارچگی ZIP و اندازه فایل‌ها
+
+### 2. اسکریپت نصب اتومات ویندوز
+- **PowerShell Script** (`auto-download-and-setup-android-offline.ps1`) - 3000+ خط
+- نصب آفلاین تمام کامپوننت‌ها در `D:\Android\`
+- جستجوی هوشمند فایل‌ها در `.ignoredDownloads`
+- تنظیم متغیرهای محیطی سیستم
+- تست بیلد پروژه Hello World
+
+### 3. فلو تست در ویندوز (GitHub Actions)
+- اجرای همین اسکریپت در ویندوز runner
+- اعتبارسنجی کامل محیط توسعه آفلاین
+- تولید APK معتبر
+
 ## ابزارهای شامل شده
 - **JDK 17** (Windows x64)
 - **Gradle** (سازگار با Android Studio 2022.3.1)
@@ -16,14 +38,53 @@
 ## ساختار پروژه
 
 ### فایل‌های اصلی
-- `goal.md` - مستندات کامل اهداف و الزامات پروژه
-- `auto-download-and-setup-android-offline.ps1` - اسکریپت نصب آفلاین ویندوز
+- `goal.md` - مستندات کامل اهداف و الزامات پروژه (فارسی)
+- `README.md` - توضیحات اولیه پروژه (فارسی)
+- `ROADMAP.md` - نقشه راه توسعه پروژه (فارسی)
+- `implementation-summary.md` - خلاصه پیاده‌سازی و وضعیت تکمیل
+- `fix-failed-components-summary.md` - گزارش رفع کامپوننت‌های ناکام
+- `auto-download-and-setup-android-offline.ps1` - اسکریپت نصب آفلاین ویندوز (3000+ خط)
 - `.gitignore` - شامل پوشه `.ignoredDownloads`
 
+### اسکریپت‌های تست و اجرا
+- `run-workflow-test.ps1` - تست اجرای workflow با GitHub CLI
+- `test-workflow-simple.ps1` - اسکریپت ساده تست workflow
+
 ### پوشه‌ها
-- `.github/workflows/` - GitHub Actions برای دانلود خودکار
-- `.ignoredDownloads/` - فایل‌های دانلود شده (در git ignore)
-- `.kiro/steering/` - راهنماهای توسعه پروژه
+
+#### `.github/workflows/` - GitHub Actions
+- `android-offline-complete.yml` - workflow اصلی دانلود و اعتبارسنجی (842 خط)
+  - دانلود 13 کامپوننت اندروید
+  - اعتبارسنجی یکپارچگی فایل‌ها
+  - آپلود به عنوان artifacts جداگانه
+
+#### `.ignoredDownloads/` - فایل‌های دانلود شده
+- فایل‌های دانلود شده از GitHub Actions (در git ignore)
+- محل جستجوی اسکریپت نصب برای فایل‌ها
+
+#### `.kiro/steering/` - راهنماهای توسعه
+- `project-overview.md` - نمای کلی پروژه و فلسفه آن
+- `workflow-usage.md` - راهنمای استفاده از workflow جدید
+- `github-cli-usage.md` - راهنمای تست GitHub CLI (موقت)
+- `development-workflow.md` - گردش کار توسعه پروژه
+
+#### `scripts/` - اسکریپت‌های کمکی PowerShell
+- `Main.ps1` - اسکریپت اصلی ارکستراسیون
+- `VersionDiscovery.ps1` - شناسایی آخرین ورژن‌های ابزارها
+- `DownloadValidator.ps1` - اعتبارسنجی لینک‌های دانلود
+- `ToolInstaller.ps1` - دانلود و نصب ابزارها
+- `HelloWorldBuilder.ps1` - ایجاد و بیلد پروژه تست
+- `YamlDatabaseManager.ps1` - مدیریت پایگاه داده ورژن‌ها
+- `ErrorHandler.ps1` - مدیریت خطا و لاگ‌گذاری
+- `README.md` - راهنمای استفاده از اسکریپت‌ها
+
+#### `tests/` - تست‌های اعتبارسنجی
+- `test_direct_urls_property.sh` - تست URL های مستقیم
+- `test_zip_property.sh` - تست ویژگی‌های ZIP
+- `validation_tests.sh` - تست‌های اعتبارسنجی کلی
+
+#### `workflow-structure-confirmation/`
+- `validation_results.json` - نتایج اعتبارسنجی workflow
 
 ## نحوه استفاده
 
@@ -81,6 +142,29 @@ D:\Android\
 - `ANDROID_SDK_ROOT`
 - `GRADLE_HOME`
 - `PATH`
+
+## دستورات مهم
+
+### اجرای workflow با GitHub CLI:
+```powershell
+& "C:\Program Files\GitHub CLI\gh.exe" workflow run "android-offline-complete.yml"
+```
+
+### بررسی وضعیت workflow:
+```powershell
+& "C:\Program Files\GitHub CLI\gh.exe" run list
+```
+
+### دانلود artifacts:
+```powershell
+& "C:\Program Files\GitHub CLI\gh.exe" run download [run-id]
+```
+
+### تست اسکریپت‌های workflow:
+```powershell
+.\run-workflow-test.ps1
+.\test-workflow-simple.ps1
+```
 
 ## مراحل توسعه
 

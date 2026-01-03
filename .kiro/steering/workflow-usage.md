@@ -1,26 +1,28 @@
 # راهنمای استفاده از Workflow جدید
 
 ## فایل Workflow
-- `android-offline-downloader.yml` - workflow اصلی برای دانلود و اعتبارسنجی
+- `android-offline-complete.yml` - workflow اصلی برای دانلود و اعتبارسنجی (842 خط)
 
 ## کامپوننت‌های دانلودی
 
 ### فایل‌های اصلی:
-1. **JDK 17** - `jdk-17.zip`
-2. **Gradle 8.0.2** - `gradle-8.0.2.zip`
-3. **Command Line Tools** - `commandlinetools-win-latest.zip`
-4. **Platform Tools** - `platform-tools.zip`
-5. **Build Tools 33.0.2** - `build-tools-33.0.2.zip`
+1. **Android Studio 2022.3.1** - `android-studio-2022.3.1.20-windows.exe`
+2. **JDK 17** - `jdk-17.zip`
+3. **Gradle 8.0.2** - `gradle-8.0.2-bin.zip`
+4. **Command Line Tools** - `commandlinetools-win-latest.zip`
+5. **Platform Tools** - `platform-tools.zip`
+6. **Build Tools 33.0.2** - `build-tools-33.0.2.zip`
 
 ### SDK Platforms:
-6. **API 33** - `sdk-platform-33.zip`
-7. **API 30** - `sdk-platform-30.zip`
-8. **API 27** - `sdk-platform-27.zip`
+7. **API 33** - `sdk-platform-33.zip`
+8. **API 30** - `sdk-platform-30.zip`
+9. **API 27** - `sdk-platform-27.zip`
 
 ### سایر کامپوننت‌ها:
-9. **System Image API 33** - `sysimage-google-apis-x86_64-33.zip`
-10. **Android M2Repository** - `android-m2repository.zip`
-11. **Google M2Repository** - `google-m2repository.zip`
+10. **System Image API 33** - `sysimage-google-apis-x86_64-33.zip`
+11. **Android M2Repository** - `android-m2repository.zip`
+12. **Google M2Repository** - `google-m2repository.zip`
+13. **SDK Licenses** - فایل‌های لایسنس خودکار
 
 ## اعتبارسنجی فایل‌ها
 
@@ -43,7 +45,7 @@
 
 ### با GitHub CLI:
 ```powershell
-& "C:\Program Files\GitHub CLI\gh.exe" workflow run "android-offline-downloader.yml"
+& "C:\Program Files\GitHub CLI\gh.exe" workflow run "android-offline-complete.yml"
 ```
 
 ### بررسی وضعیت:

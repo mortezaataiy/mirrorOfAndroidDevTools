@@ -60,7 +60,7 @@
 
 ### اجرای workflow:
 ```powershell
-& "C:\Program Files\GitHub CLI\gh.exe" workflow run "download-android-offline.yml"
+& "C:\Program Files\GitHub CLI\gh.exe" workflow run "android-offline-complete.yml"
 ```
 
 ### تست اسکریپت نصب:

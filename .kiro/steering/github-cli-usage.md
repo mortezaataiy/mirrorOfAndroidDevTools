@@ -13,7 +13,7 @@ GitHub CLI فقط برای **تست موقت** workflows استفاده می‌�
 ### تست و اجرای workflows:
 ```powershell
 # اجرای workflow برای تست
-& "C:\Program Files\GitHub CLI\gh.exe" workflow run "download-android-offline.yml"
+& "C:\Program Files\GitHub CLI\gh.exe" workflow run "android-offline-complete.yml"
 
 # بررسی وضعیت اجرا
 & "C:\Program Files\GitHub CLI\gh.exe" run list
