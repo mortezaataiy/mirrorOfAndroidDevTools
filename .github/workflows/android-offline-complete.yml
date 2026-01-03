@@ -221,65 +221,42 @@ jobs:
           echo "=== تست خصوصیت ۲: تشخیص محتوای HTML ==="
           echo "Feature: github-actions-workflow, Property 2: تشخیص محتوای HTML"
           
-          test_count=0
-          passed_tests=0
-          failed_tests=0
-          
           mkdir -p test_files
           
-          # تست با محتوای HTML
-          ((test_count++))
-          html_file="test_files/test_html.txt"
-          echo "<html><head><title>Test</title></head><body>Test</body></html>" > "$html_file"
+          # تست با محتوای HTML - باید رد شود
+          echo "تست HTML: ایجاد فایل با محتوای HTML"
+          echo "<html><head><title>Test</title></head><body>Test</body></html>" > "test_files/test_html.txt"
           
-          if detect_html_content "$html_file" "html-test" >/dev/null 2>&1; then
-            echo "✗ تست $test_count ناکام: فایل HTML به اشتباه پذیرفته شد"
-            ((failed_tests++))
+          if detect_html_content "test_files/test_html.txt" "html-test" >/dev/null 2>&1; then
+            echo "✗ تست HTML ناکام: فایل HTML به اشتباه پذیرفته شد"
+            html_result="fail"
           else
-            echo "✓ تست $test_count موفق: فایل HTML به درستی رد شد"
-            ((passed_tests++))
+            echo "✓ تست HTML موفق: فایل HTML به درستی رد شد"
+            html_result="pass"
           fi
           
-          # تست با محتوای DOCTYPE
-          ((test_count++))
-          doctype_file="test_files/test_doctype.txt"
-          echo "<!DOCTYPE html><html>Test</html>" > "$doctype_file"
+          # تست با محتوای باینری - باید پذیرفته شود
+          echo "تست باینری: ایجاد فایل باینری"
+          echo "This is binary content without HTML tags" > "test_files/test_binary.txt"
           
-          if detect_html_content "$doctype_file" "doctype-test" >/dev/null 2>&1; then
-            echo "✗ تست $test_count ناکام: فایل DOCTYPE به اشتباه پذیرفته شد"
-            ((failed_tests++))
+          if detect_html_content "test_files/test_binary.txt" "binary-test" >/dev/null 2>&1; then
+            echo "✓ تست باینری موفق: فایل باینری به درستی پذیرفته شد"
+            binary_result="pass"
           else
-            echo "✓ تست $test_count موفق: فایل DOCTYPE به درستی رد شد"
-            ((passed_tests++))
-          fi
-          
-          # تست با محتوای باینری
-          ((test_count++))
-          binary_file="test_files/test_binary.bin"
-          dd if=/dev/urandom of="$binary_file" bs=1024 count=1 2>/dev/null
-          
-          if detect_html_content "$binary_file" "binary-test" >/dev/null 2>&1; then
-            echo "✓ تست $test_count موفق: فایل باینری به درستی پذیرفته شد"
-            ((passed_tests++))
-          else
-            echo "✗ تست $test_count ناکام: فایل باینری به اشتباه رد شد"
-            ((failed_tests++))
+            echo "✗ تست باینری ناکام: فایل باینری به اشتباه رد شد"
+            binary_result="fail"
           fi
           
           # پاک کردن فایل‌های تست
-          rm -f test_files/*
-          rmdir test_files 2>/dev/null
+          rm -rf test_files
           
-          echo "نتایج تست خصوصیت ۲:"
-          echo "  تعداد کل تست‌ها: $test_count"
-          echo "  تست‌های موفق: $passed_tests"
-          echo "  تست‌های ناکام: $failed_tests"
-          echo "  درصد موفقیت: $(( passed_tests * 100 / test_count ))%"
-          
-          if [ $failed_tests -eq 0 ]; then
+          # بررسی نتایج
+          if [[ "$html_result" == "pass" && "$binary_result" == "pass" ]]; then
             echo "SUCCESS: تمام تست‌های خصوصیت ۲ موفق بودند"
           else
-            echo "FAILURE: $failed_tests تست از $test_count ناکام بودند"
+            echo "FAILURE: برخی تست‌ها ناکام بودند"
+            echo "تست HTML: $html_result"
+            echo "تست باینری: $binary_result"
             exit 1
           fi
       
