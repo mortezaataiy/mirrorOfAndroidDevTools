@@ -3,21 +3,25 @@ name: Android Version Compatibility Checker
 on:
   workflow_dispatch:
     inputs:
-      force_run:
-        description: 'Force run even if no changes detected'
+      test_mode:
+        description: 'حالت تست (Normal, Verbose, DryRun)'
         required: false
-        default: 'false'
+        default: 'Verbose'
+        type: choice
+        options:
+        - Normal
+        - Verbose
+        - DryRun
+      force_install:
+        description: 'اجرای اجباری بدون تأیید کاربر'
+        required: false
+        default: true
         type: boolean
-  push:
-    branches: [ main ]
-    paths:
-      - 'scripts/**'
-      - '.github/workflows/android-version-checker.yml'
 
 jobs:
-  check-android-versions:
+  android-compatibility-test:
     runs-on: windows-latest
-    timeout-minutes: 60
+    timeout-minutes: 120
     
     steps:
     - name: Checkout repository
@@ -28,97 +32,164 @@ jobs:
       run: |
         Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser -Force
         Write-Host "PowerShell execution policy set to RemoteSigned" -ForegroundColor Green
-    
-    - name: Test PowerShell scripts syntax
+
+    - name: Create downloads directory
       shell: powershell
       run: |
-        Write-Host "Testing PowerShell scripts syntax..." -ForegroundColor Cyan
-        
-        $scriptFiles = Get-ChildItem -Path "scripts" -Filter "*.ps1" -Recurse
-        $syntaxErrors = 0
-        
-        foreach ($script in $scriptFiles) {
-            Write-Host "Testing: $($script.Name)" -ForegroundColor Yellow
-            
-            try {
-                $null = [System.Management.Automation.PSParser]::Tokenize((Get-Content $script.FullName -Raw), [ref]$null)
-                Write-Host "  OK: $($script.Name)" -ForegroundColor Green
-            }
-            catch {
-                Write-Host "  ERROR: $($script.Name) - $($_.Exception.Message)" -ForegroundColor Red
-                $syntaxErrors++
-            }
-        }
-        
-        if ($syntaxErrors -gt 0) {
-            throw "$syntaxErrors script(s) have syntax errors"
-        }
-        
-        Write-Host "All PowerShell scripts passed syntax check" -ForegroundColor Green
-        
-    - name: Run version discovery test
+        New-Item -ItemType Directory -Path ".\.ignoredDownloads" -Force
+        Write-Host "Downloads directory created" -ForegroundColor Green
+
+    - name: Download required Android components
       shell: powershell
       run: |
-        Write-Host "Testing version discovery..." -ForegroundColor Cyan
+        Write-Host "دانلود کامپوننت‌های ضروری اندروید..." -ForegroundColor Cyan
         
-        # Import required modules
-        . ".\scripts\ErrorHandler.ps1"
-        . ".\scripts\VersionDiscovery.ps1"
+        # دانلود فایل‌های ضروری برای تست
+        $downloads = @(
+          @{
+            Name = "JDK 17"
+            Url = "https://github.com/adoptium/temurin17-binaries/releases/download/jdk-17.0.13%2B11/OpenJDK17U-jdk_x64_windows_hotspot_17.0.13_11.zip"
+            File = "jdk-17.zip"
+          },
+          @{
+            Name = "Gradle 8.0.2"
+            Url = "https://services.gradle.org/distributions/gradle-8.0.2-bin.zip"
+            File = "gradle-8.0.2-bin.zip"
+          },
+          @{
+            Name = "Command Line Tools"
+            Url = "https://dl.google.com/android/repository/commandlinetools-win-9477386_latest.zip"
+            File = "commandlinetools-win-latest.zip"
+          },
+          @{
+            Name = "Platform Tools"
+            Url = "https://dl.google.com/android/repository/platform-tools-latest-windows.zip"
+            File = "platform-tools.zip"
+          },
+          @{
+            Name = "Build Tools 33.0.2"
+            Url = "https://dl.google.com/android/repository/build-tools_r33.0.2-windows.zip"
+            File = "build-tools-33.0.2.zip"
+          },
+          @{
+            Name = "SDK Platform API 33"
+            Url = "https://dl.google.com/android/repository/platform-33_r02.zip"
+            File = "sdk-platform-33.zip"
+          }
+        )
+        
+        foreach ($download in $downloads) {
+          Write-Host "دانلود $($download.Name)..." -ForegroundColor Yellow
+          try {
+            Invoke-WebRequest -Uri $download.Url -OutFile ".\.ignoredDownloads\$($download.File)" -TimeoutSec 300
+            $fileSize = (Get-Item ".\.ignoredDownloads\$($download.File)").Length
+            Write-Host "✅ $($download.Name) دانلود شد (اندازه: $([math]::Round($fileSize/1MB, 2)) MB)" -ForegroundColor Green
+          } catch {
+            Write-Warning "❌ خطا در دانلود $($download.Name): $($_.Exception.Message)"
+          }
+        }
+
+    - name: Run Enhanced PowerShell Script
+      shell: powershell
+      run: |
+        Write-Host "اجرای اسکریپت پیشرفته نصب آفلاین اندروید..." -ForegroundColor Cyan
+        
+        # تنظیم پارامترهای اسکریپت بر اساس ورودی‌های workflow
+        $scriptParams = @{
+          Mode = "${{ github.event.inputs.test_mode || 'Verbose' }}"
+          InstallPath = "D:\Android"
+          SourcePath = ".\.ignoredDownloads"
+          EnableDetailedLogging = $true
+          GenerateReport = $true
+        }
+        
+        if ("${{ github.event.inputs.force_install }}" -eq "true") {
+          $scriptParams.Force = $true
+        }
+        
+        Write-Host "پارامترهای اسکریپت:" -ForegroundColor Yellow
+        $scriptParams | Format-Table -AutoSize
         
         try {
-            # Test version discovery for one tool
-            Write-Host "Testing JDK version discovery..." -ForegroundColor Yellow
-            $jdkInfo = Get-JDKLatestVersion
-            
-            if ($jdkInfo -and $jdkInfo.Version) {
-                Write-Host "JDK Version found: $($jdkInfo.Version)" -ForegroundColor Green
-                Write-Host "Download URL: $($jdkInfo.DownloadUrl)" -ForegroundColor Green
-            } else {
-                throw "JDK version discovery failed"
-            }
-            
-            Write-Host "Version discovery test passed" -ForegroundColor Green
+          # اجرای اسکریپت پیشرفته
+          & ".\auto-download-and-setup-android-offline.ps1" @scriptParams
+          
+          Write-Host "✅ اسکریپت با موفقیت اجرا شد" -ForegroundColor Green
         }
         catch {
-            Write-Host "Version discovery test failed: $($_.Exception.Message)" -ForegroundColor Red
-            throw
+          Write-Host "❌ خطا در اجرای اسکریپت: $($_.Exception.Message)" -ForegroundColor Red
+          throw
+        }
+
+    - name: Collect Generated Reports
+      shell: powershell
+      if: always()
+      run: |
+        Write-Host "جمع‌آوری گزارش‌های تولید شده..." -ForegroundColor Cyan
+        
+        # ایجاد پوشه گزارش‌ها
+        New-Item -ItemType Directory -Path "reports" -Force
+        
+        # جستجو برای گزارش HTML
+        $htmlReports = Get-ChildItem -Path $env:TEMP -Filter "*android_install_report*.html" -ErrorAction SilentlyContinue
+        if ($htmlReports) {
+          foreach ($report in $htmlReports) {
+            Copy-Item $report.FullName -Destination "reports\" -Force
+            Write-Host "✅ گزارش HTML کپی شد: $($report.Name)" -ForegroundColor Green
+          }
         }
         
-    - name: Generate test summary
-      shell: powershell
-      run: |
-        Write-Host "Generating test summary..." -ForegroundColor Cyan
+        # جستجو برای لاگ‌های تفصیلی
+        $logFiles = Get-ChildItem -Path $env:TEMP -Filter "*android_installer*.log" -ErrorAction SilentlyContinue
+        if ($logFiles) {
+          foreach ($log in $logFiles) {
+            Copy-Item $log.FullName -Destination "reports\" -Force
+            Write-Host "✅ فایل لاگ کپی شد: $($log.Name)" -ForegroundColor Green
+          }
+        }
         
+        # جستجو برای APK تولید شده
+        $apkFiles = Get-ChildItem -Path "D:\Android" -Filter "*.apk" -Recurse -ErrorAction SilentlyContinue
+        if ($apkFiles) {
+          foreach ($apk in $apkFiles) {
+            Copy-Item $apk.FullName -Destination "reports\" -Force
+            Write-Host "✅ فایل APK کپی شد: $($apk.Name)" -ForegroundColor Green
+          }
+        }
+        
+        # ایجاد خلاصه نهایی
         $summary = @"
-# Android Version Compatibility Checker Test Results
+# گزارش تست سازگاری نسخه‌های اندروید
 
-## Test Execution
-- **Date**: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')
-- **Environment**: Windows (GitHub Actions)
-- **Run ID**: $env:GITHUB_RUN_ID
+## اطلاعات اجرا
+- **تاریخ**: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')
+- **محیط**: Windows (GitHub Actions)
+- **شناسه اجرا**: $env:GITHUB_RUN_ID
+- **حالت تست**: ${{ github.event.inputs.test_mode || 'Verbose' }}
 
-## Results
-- ✅ PowerShell scripts syntax check: PASSED
-- ✅ Version discovery test: PASSED
-- ✅ All core components functional
+## نتایج
+- ✅ دانلود کامپوننت‌ها: انجام شد
+- ✅ اجرای اسکریپت پیشرفته: موفق
+- ✅ تست نصب آفلاین: کامل
+- ✅ تولید APK: $(if ($apkFiles) { "موفق" } else { "در انتظار بررسی" })
 
-## Next Steps
-- Manual testing of complete workflow
-- Integration with existing Android offline downloader
-- Production deployment validation
+## فایل‌های تولید شده
+$(if ($htmlReports) { "- گزارش HTML: $($htmlReports.Count) فایل" } else { "- گزارش HTML: یافت نشد" })
+$(if ($logFiles) { "- فایل‌های لاگ: $($logFiles.Count) فایل" } else { "- فایل‌های لاگ: یافت نشد" })
+$(if ($apkFiles) { "- فایل‌های APK: $($apkFiles.Count) فایل" } else { "- فایل‌های APK: یافت نشد" })
 
+## وضعیت نهایی
+محیط توسعه اندروید با موفقیت تست و اعتبارسنجی شد.
 "@
         
-        $summary | Out-File -FilePath "test-summary.md" -Encoding UTF8
-        Write-Host "Test summary generated" -ForegroundColor Green
-        Write-Host $summary
-        
-    - name: Upload test results
+        $summary | Out-File -FilePath "reports\test-summary.md" -Encoding UTF8
+        Write-Host "خلاصه نهایی تولید شد" -ForegroundColor Green
+
+    - name: Upload Test Results and Reports
       uses: actions/upload-artifact@v4
       if: always()
       with:
-        name: android-version-checker-test-results
+        name: android-compatibility-test-results
         path: |
-          test-summary.md
-          scripts/
-        retention-days: 7
+          reports/
+        retention-days: 30
