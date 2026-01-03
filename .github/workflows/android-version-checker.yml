@@ -1,0 +1,433 @@
+name: Android Version Compatibility Checker
+
+on:
+  workflow_dispatch:
+    inputs:
+      force_run:
+        description: 'Force run even if no changes detected'
+        required: false
+        default: 'false'
+        type: boolean
+  schedule:
+    # اجرای هفتگی در روز یکشنبه ساعت 2 صبح UTC
+    - cron: '0 2 * * 0'
+  push:
+    branches: [ main ]
+    paths:
+      - 'scripts/**'
+      - '.github/workflows/android-version-checker.yml'
+
+jobs:
+  check-android-versions:
+    runs-on: windows-latest
+    timeout-minutes: 60
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+      
+    - name: Setup PowerShell execution policy
+      shell: powershell
+      run: |
+        Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser -Force
+        Write-Host "✅ PowerShell execution policy set to RemoteSigned"
+    
+    - name: Initialize logging
+      shell: powershell
+      run: |
+        Write-Host "🚀 شروع بررسی سازگاری ورژن‌های اندروید" -ForegroundColor Cyan
+        Write-Host "📅 تاریخ اجرا: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')" -ForegroundColor Yellow
+        Write-Host "🖥️ محیط اجرا: $env:RUNNER_OS" -ForegroundColor Yellow
+        
+        # ایجاد دایرکتوری لاگ
+        New-Item -ItemType Directory -Path "logs" -Force | Out-Null
+        
+    - name: Import PowerShell modules
+      shell: powershell
+      run: |
+        Write-Host "📦 بارگذاری ماژول‌های PowerShell..." -ForegroundColor Yellow
+        
+        # Import all required modules
+        . ".\scripts\ErrorHandler.ps1"
+        . ".\scripts\VersionDiscovery.ps1"
+        . ".\scripts\DownloadValidator.ps1"
+        . ".\scripts\ToolInstaller.ps1"
+        . ".\scripts\HelloWorldBuilder.ps1"
+        . ".\scripts\YamlDatabaseManager.ps1"
+        
+        Write-Host "✅ تمام ماژول‌ها بارگذاری شدند" -ForegroundColor Green
+        
+    - name: Discover latest versions
+      shell: powershell
+      run: |
+        Write-Host "🔍 شناسایی آخرین ورژن‌های ابزارهای اندروید..." -ForegroundColor Cyan
+        
+        # Import modules
+        . ".\scripts\ErrorHandler.ps1"
+        . ".\scripts\VersionDiscovery.ps1"
+        
+        try {
+            # شناسایی تمام ابزارها
+            $tools = Get-AllLatestVersions
+            
+            if ($tools.Count -eq 0) {
+                throw "هیچ ابزاری شناسایی نشد"
+            }
+            
+            Write-Host "✅ $($tools.Count) ابزار شناسایی شد" -ForegroundColor Green
+            
+            # ذخیره اطلاعات ابزارها برای مراحل بعدی
+            $toolsJson = $tools | ConvertTo-Json -Depth 3
+            $toolsJson | Out-File -FilePath "discovered-tools.json" -Encoding UTF8
+            
+            # نمایش خلاصه
+            foreach ($tool in $tools) {
+                Write-Host "  📋 $($tool.Name) v$($tool.Version)" -ForegroundColor White
+            }
+        }
+        catch {
+            Write-Error "❌ خطا در شناسایی ورژن‌ها: $($_.Exception.Message)"
+            exit 1
+        }
+        
+    - name: Validate download links
+      shell: powershell
+      run: |
+        Write-Host "🔗 اعتبارسنجی لینک‌های دانلود..." -ForegroundColor Cyan
+        
+        # Import modules
+        . ".\scripts\ErrorHandler.ps1"
+        . ".\scripts\DownloadValidator.ps1"
+        
+        try {
+            # خواندن اطلاعات ابزارها
+            $toolsJson = Get-Content -Path "discovered-tools.json" -Raw
+            $tools = $toolsJson | ConvertFrom-Json
+            
+            $validationResults = @{}
+            $validCount = 0
+            
+            foreach ($tool in $tools) {
+                Write-Host "  🔍 تست $($tool.Name)..." -ForegroundColor Yellow
+                
+                $validation = Test-DownloadLink -Url $tool.DownloadUrl -MinSize 1MB
+                $validationResults[$tool.Name] = $validation
+                
+                if ($validation.Valid) {
+                    Write-Host "    ✅ معتبر - اندازه: $([math]::Round($validation.Size/1MB, 2)) MB" -ForegroundColor Green
+                    $validCount++
+                }
+                else {
+                    Write-Host "    ❌ نامعتبر: $($validation.Error)" -ForegroundColor Red
+                }
+            }
+            
+            Write-Host "✅ $validCount از $($tools.Count) لینک معتبر است" -ForegroundColor Green
+            
+            # ذخیره نتایج اعتبارسنجی
+            $validationResults | ConvertTo-Json -Depth 3 | Out-File -FilePath "validation-results.json" -Encoding UTF8
+            
+            if ($validCount -eq 0) {
+                throw "هیچ لینک معتبری پیدا نشد"
+            }
+        }
+        catch {
+            Write-Error "❌ خطا در اعتبارسنجی لینک‌ها: $($_.Exception.Message)"
+            exit 1
+        }
+        
+    - name: Install Android development tools
+      shell: powershell
+      run: |
+        Write-Host "⚙️ نصب ابزارهای توسعه اندروید..." -ForegroundColor Cyan
+        
+        # Import modules
+        . ".\scripts\ErrorHandler.ps1"
+        . ".\scripts\VersionDiscovery.ps1"
+        . ".\scripts\DownloadValidator.ps1"
+        . ".\scripts\ToolInstaller.ps1"
+        
+        try {
+            # خواندن اطلاعات ابزارها
+            $toolsJson = Get-Content -Path "discovered-tools.json" -Raw
+            $tools = $toolsJson | ConvertFrom-Json
+            
+            # تبدیل از JSON به ToolInfo objects
+            $toolObjects = @()
+            foreach ($tool in $tools) {
+                $toolObj = [ToolInfo]::new($tool.Name)
+                $toolObj.Version = $tool.Version
+                $toolObj.DownloadUrl = $tool.DownloadUrl
+                $toolObj.FileType = $tool.FileType
+                $toolObjects += $toolObj
+            }
+            
+            # نصب تمام ابزارها
+            $installResult = Install-AllTools -Tools $toolObjects
+            
+            if ($installResult) {
+                Write-Host "✅ تمام ابزارها با موفقیت نصب شدند" -ForegroundColor Green
+            }
+            else {
+                Write-Host "⚠️ برخی ابزارها نصب نشدند" -ForegroundColor Yellow
+            }
+            
+            # ذخیره نتایج نصب
+            $installResults = @{}
+            foreach ($tool in $toolObjects) {
+                $installResults[$tool.Name] = @{
+                    Status = $tool.TestStatus
+                    InstallPath = $tool.InstallPath
+                    FileSize = $tool.FileSize
+                }
+            }
+            $installResults | ConvertTo-Json -Depth 3 | Out-File -FilePath "install-results.json" -Encoding UTF8
+            
+            # ذخیره اطلاعات به‌روزرسانی شده ابزارها
+            $toolObjects | ConvertTo-Json -Depth 3 | Out-File -FilePath "installed-tools.json" -Encoding UTF8
+        }
+        catch {
+            Write-Error "❌ خطا در نصب ابزارها: $($_.Exception.Message)"
+            
+            # ذخیره لاگ‌های خطا
+            Save-LogsToFile -OutputPath "logs"
+            exit 1
+        }
+        
+    - name: Create and build Hello World project
+      shell: powershell
+      run: |
+        Write-Host "🏗️ ایجاد و بیلد پروژه Hello World..." -ForegroundColor Cyan
+        
+        # Import modules
+        . ".\scripts\ErrorHandler.ps1"
+        . ".\scripts\HelloWorldBuilder.ps1"
+        
+        try {
+            # ایجاد دایرکتوری پروژه
+            $projectDir = "HelloWorldProjects"
+            New-Item -ItemType Directory -Path $projectDir -Force | Out-Null
+            
+            # ایجاد پروژه کامل
+            $projectResult = New-CompleteHelloWorldProject -ProjectPath $projectDir
+            
+            if ($projectResult.Success) {
+                Write-Host "✅ پروژه Hello World با موفقیت ایجاد و بیلد شد" -ForegroundColor Green
+                
+                # بررسی فایل APK
+                if ($projectResult.BuildResult.ApkPath -and (Test-Path $projectResult.BuildResult.ApkPath)) {
+                    $apkSize = (Get-Item $projectResult.BuildResult.ApkPath).Length
+                    Write-Host "📱 فایل APK تولید شد: $([math]::Round($apkSize/1MB, 2)) MB" -ForegroundColor Green
+                    
+                    # کپی APK به artifacts
+                    Copy-Item $projectResult.BuildResult.ApkPath -Destination "hello-world-test.apk"
+                }
+                
+                # ذخیره نتایج بیلد
+                $buildResults = @{
+                    Success = $projectResult.Success
+                    ProjectPath = $projectResult.ProjectPath
+                    ApkPath = $projectResult.BuildResult.ApkPath
+                    ApkSize = if ($projectResult.BuildResult.ApkSize) { $projectResult.BuildResult.ApkSize } else { 0 }
+                    ApkValid = $projectResult.BuildResult.ApkValid
+                }
+                $buildResults | ConvertTo-Json -Depth 3 | Out-File -FilePath "build-results.json" -Encoding UTF8
+            }
+            else {
+                throw "ایجاد یا بیلد پروژه Hello World ناموفق بود: $($projectResult.Error)"
+            }
+        }
+        catch {
+            Write-Error "❌ خطا در ایجاد پروژه Hello World: $($_.Exception.Message)"
+            
+            # ذخیره لاگ‌های خطا
+            Save-LogsToFile -OutputPath "logs"
+            exit 1
+        }
+        
+    - name: Update version database
+      shell: powershell
+      run: |
+        Write-Host "💾 به‌روزرسانی پایگاه داده ورژن‌ها..." -ForegroundColor Cyan
+        
+        # Import modules
+        . ".\scripts\ErrorHandler.ps1"
+        . ".\scripts\VersionDiscovery.ps1"
+        . ".\scripts\YamlDatabaseManager.ps1"
+        
+        try {
+            # خواندن نتایج مراحل قبلی
+            $toolsJson = Get-Content -Path "installed-tools.json" -Raw -ErrorAction SilentlyContinue
+            $buildResultsJson = Get-Content -Path "build-results.json" -Raw -ErrorAction SilentlyContinue
+            
+            if ($toolsJson) {
+                $tools = $toolsJson | ConvertFrom-Json
+                
+                # تبدیل از JSON به ToolInfo objects
+                $toolObjects = @()
+                foreach ($tool in $tools) {
+                    $toolObj = [ToolInfo]::new($tool.Name)
+                    $toolObj.Version = $tool.Version
+                    $toolObj.DownloadUrl = $tool.DownloadUrl
+                    $toolObj.FileType = $tool.FileType
+                    $toolObj.TestStatus = $tool.TestStatus
+                    $toolObj.InstallPath = $tool.InstallPath
+                    $toolObj.FileSize = $tool.FileSize
+                    $toolObj.TestDate = [datetime]$tool.TestDate
+                    $toolObjects += $toolObj
+                }
+                
+                # بررسی موفقیت بیلد Hello World
+                $helloWorldSuccess = $false
+                if ($buildResultsJson) {
+                    $buildResults = $buildResultsJson | ConvertFrom-Json
+                    $helloWorldSuccess = $buildResults.Success
+                }
+                
+                # به‌روزرسانی پایگاه داده
+                $updateResult = Update-VersionDatabase -Tools $toolObjects -OutputPath "." -HelloWorldBuildSuccess $helloWorldSuccess
+                
+                if ($updateResult.Success) {
+                    Write-Host "✅ پایگاه داده با موفقیت به‌روزرسانی شد" -ForegroundColor Green
+                    Write-Host "📊 $($updateResult.ToolsCount) ابزار، $($updateResult.SuccessfulInstalls) نصب موفق" -ForegroundColor Green
+                }
+                else {
+                    throw "به‌روزرسانی پایگاه داده ناموفق بود: $($updateResult.Error)"
+                }
+            }
+            else {
+                Write-Host "⚠️ اطلاعات ابزارها یافت نشد" -ForegroundColor Yellow
+            }
+        }
+        catch {
+            Write-Error "❌ خطا در به‌روزرسانی پایگاه داده: $($_.Exception.Message)"
+            
+            # ذخیره لاگ‌های خطا
+            Save-LogsToFile -OutputPath "logs"
+        }
+        
+    - name: Generate summary report
+      shell: powershell
+      run: |
+        Write-Host "📋 تولید گزارش خلاصه..." -ForegroundColor Cyan
+        
+        # Import modules
+        . ".\scripts\ErrorHandler.ps1"
+        
+        try {
+            $summary = @"
+# گزارش بررسی سازگاری ورژن‌های اندروید
+
+## اطلاعات اجرا
+- **تاریخ اجرا**: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')
+- **محیط اجرا**: $env:RUNNER_OS
+- **GitHub Run ID**: $env:GITHUB_RUN_ID
+
+## نتایج
+"@
+            
+            # خواندن نتایج مختلف
+            if (Test-Path "discovered-tools.json") {
+                $tools = Get-Content "discovered-tools.json" | ConvertFrom-Json
+                $summary += "`n### ابزارهای شناسایی شده ($($tools.Count))`n"
+                foreach ($tool in $tools) {
+                    $summary += "- **$($tool.Name)** v$($tool.Version)`n"
+                }
+            }
+            
+            if (Test-Path "install-results.json") {
+                $installResults = Get-Content "install-results.json" | ConvertFrom-Json
+                $successCount = 0
+                $summary += "`n### نتایج نصب`n"
+                foreach ($toolName in $installResults.PSObject.Properties.Name) {
+                    $result = $installResults.$toolName
+                    $status = if ($result.Status -eq "installed") { "✅ موفق" } else { "❌ ناموفق" }
+                    $summary += "- **$toolName**: $status`n"
+                    if ($result.Status -eq "installed") { $successCount++ }
+                }
+                $summary += "`n**خلاصه نصب**: $successCount از $($installResults.PSObject.Properties.Count) ابزار موفق`n"
+            }
+            
+            if (Test-Path "build-results.json") {
+                $buildResults = Get-Content "build-results.json" | ConvertFrom-Json
+                $summary += "`n### نتایج بیلد Hello World`n"
+                if ($buildResults.Success) {
+                    $summary += "- ✅ **بیلد موفق**`n"
+                    if ($buildResults.ApkSize -gt 0) {
+                        $apkSizeMB = [math]::Round($buildResults.ApkSize/1MB, 2)
+                        $summary += "- 📱 **اندازه APK**: $apkSizeMB MB`n"
+                    }
+                }
+                else {
+                    $summary += "- ❌ **بیلد ناموفق**`n"
+                }
+            }
+            
+            # نمایش خلاصه خطاها
+            Show-ErrorSummary
+            Show-ActivitySummary
+            
+            # ذخیره گزارش
+            $summary | Out-File -FilePath "summary-report.md" -Encoding UTF8
+            
+            Write-Host "✅ گزارش خلاصه تولید شد" -ForegroundColor Green
+            Write-Host $summary
+        }
+        catch {
+            Write-Error "❌ خطا در تولید گزارش: $($_.Exception.Message)"
+        }
+        
+    - name: Save logs and artifacts
+      shell: powershell
+      run: |
+        Write-Host "💾 ذخیره لاگ‌ها و artifacts..." -ForegroundColor Cyan
+        
+        # Import modules
+        . ".\scripts\ErrorHandler.ps1"
+        
+        # ذخیره لاگ‌ها
+        Save-LogsToFile -OutputPath "logs"
+        
+        Write-Host "✅ لاگ‌ها ذخیره شدند" -ForegroundColor Green
+        
+    - name: Upload artifacts
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: android-version-check-results
+        path: |
+          android-tools-versions.yml
+          summary-report.md
+          logs/
+          *.json
+          hello-world-test.apk
+        retention-days: 30
+        
+    - name: Commit updated database
+      if: success()
+      run: |
+        git config --local user.email "action@github.com"
+        git config --local user.name "GitHub Action"
+        
+        if (Test-Path "android-tools-versions.yml") {
+          git add android-tools-versions.yml
+          
+          $changes = git diff --cached --name-only
+          if ($changes) {
+            git commit -m "🤖 به‌روزرسانی خودکار پایگاه داده ورژن‌های اندروید
+            
+            - تاریخ بررسی: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')
+            - GitHub Run: $env:GITHUB_RUN_ID
+            - تغییرات: $($changes -join ', ')"
+            
+            git push
+            Write-Host "✅ تغییرات commit و push شدند" -ForegroundColor Green
+          }
+          else {
+            Write-Host "ℹ️ تغییری برای commit وجود ندارد" -ForegroundColor Yellow
+          }
+        }
+        else {
+          Write-Host "⚠️ فایل پایگاه داده یافت نشد" -ForegroundColor Yellow
+        }
+      shell: powershell
