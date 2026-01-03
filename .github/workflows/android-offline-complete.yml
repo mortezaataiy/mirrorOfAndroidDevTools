@@ -431,7 +431,7 @@ jobs:
         continue-on-error: true
         run: |
           echo "دانلود SDK Platform API 33..."
-          if curl -L -o downloads/sdk-platform-33.zip "https://dl.google.com/android/repository/platform-33_r03.zip"; then
+          if curl -L -o downloads/sdk-platform-33.zip "https://dl.google.com/android/repository/platform-33_r02.zip"; then
             echo "download_success=true" >> $GITHUB_OUTPUT
             echo "SUCCESS: دانلود SDK Platform API 33 کامل شد"
           else
@@ -603,7 +603,7 @@ jobs:
         continue-on-error: true
         run: |
           echo "دانلود Android M2Repository..."
-          if curl -L -o downloads/android-m2repository.zip "https://dl.google.com/android/repository/android_m2repository_r58.zip"; then
+          if curl -L -o downloads/android-m2repository.zip "https://dl.google.com/android/repository/android_m2repository_r47.zip"; then
             echo "download_success=true" >> $GITHUB_OUTPUT
             echo "SUCCESS: دانلود Android M2Repository کامل شد"
           else
