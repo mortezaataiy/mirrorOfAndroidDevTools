@@ -12,71 +12,71 @@
   - تعریف job اصلی با Ubuntu runner
   - _الزامات: ۲.۱، ۲.۲_
 
-- [-] 2. پیاده‌سازی تست Platform Tools
-  - [ ] 2.1 تست URL های مختلف Platform Tools
+- [x] 2. پیاده‌سازی تست Platform Tools
+  - [x] 2.1 تست URL های مختلف Platform Tools
     - تست platform-tools_r34.0.5-windows.zip
     - تست platform-tools_r33.0.2-windows.zip
     - تست platform-tools-latest-windows.zip
     - _الزامات: ۳.۱، ۳.۲، ۳.۳_
 
-  - [ ] 2.2 اعتبارسنجی Platform Tools
+  - [x] 2.2 اعتبارسنجی Platform Tools
     - بررسی حداقل اندازه 15MB
     - بررسی یکپارچگی ZIP
     - محاسبه checksum
     - _الزامات: ۳.۲، ۶.۳، ۶.۴_
 
-- [ ] 3. پیاده‌سازی تست SDK Platform API 33
-  - [ ] 3.1 تست URL های مختلف SDK Platform API 33
+- [x] 3. پیاده‌سازی تست SDK Platform API 33
+  - [x] 3.1 تست URL های مختلف SDK Platform API 33
     - تست platform-33_r02.zip
     - تست platform-33_r01.zip
     - تست URL های جایگزین
     - _الزامات: ۴.۱، ۴.۲، ۴.۳_
 
-  - [ ] 3.2 اعتبارسنجی SDK Platform API 33
+  - [x] 3.2 اعتبارسنجی SDK Platform API 33
     - بررسی حداقل اندازه 25MB
     - بررسی یکپارچگی ZIP
     - محاسبه checksum
     - _الزامات: ۴.۲، ۶.۳، ۶.۴_
 
-- [ ] 4. پیاده‌سازی تست M2Repository ها
-  - [ ] 4.1 تست Android M2Repository
+- [x] 4. پیاده‌سازی تست M2Repository ها
+  - [x] 4.1 تست Android M2Repository
     - تست android_m2repository_r57.zip
     - تست android_m2repository_r56.zip
     - تست android_m2repository_r47.zip
     - _الزامات: ۵.۱، ۵.۳، ۵.۴_
 
-  - [ ] 4.2 تست Google M2Repository
+  - [x] 4.2 تست Google M2Repository
     - تست google_m2repository_r201.zip
     - تست google_m2repository_r200.zip
     - تست نسخه‌های جایگزین
     - _الزامات: ۵.۲، ۵.۳، ۵.۴_
 
-  - [ ] 4.3 اعتبارسنجی M2Repository ها
+  - [x] 4.3 اعتبارسنجی M2Repository ها
     - بررسی حداقل اندازه 50MB
     - بررسی یکپارچگی ZIP
     - محاسبه checksum
     - _الزامات: ۵.۳، ۶.۳، ۶.۴_
 
-- [ ] 5. پیاده‌سازی گزارش‌دهی نتایج
-  - [ ] 5.1 تولید گزارش JSON
+- [x] 5. پیاده‌سازی گزارش‌دهی نتایج
+  - [x] 5.1 تولید گزارش JSON
     - ثبت نتایج تست هر URL
     - ثبت URL های معتبر
     - ثبت دلایل ناکامی
     - _الزامات: ۷.۱، ۷.۲، ۷.۳_
 
-  - [ ] 5.2 تولید دستورالعمل اصلاح
+  - [x] 5.2 تولید دستورالعمل اصلاح
     - ایجاد فایل patch برای workflow اصلی
     - ارائه دستورالعمل جایگزینی URL ها
     - تولید script اصلاح خودکار
     - _الزامات: ۸.۱، ۸.۲_
 
-- [ ] 6. تست workflow آزمایشی
+- [x] 6. تست workflow آزمایشی
   - اجرای workflow آزمایشی
   - بررسی نتایج و گزارش‌ها
   - تأیید یافتن URL های معتبر
   - _الزامات: ۲.۳، ۲.۴_
 
-- [ ] 7. اصلاح workflow اصلی
+- [x] 7. اصلاح workflow اصلی
   - جایگزینی URL های ناکام با URL های معتبر
   - تست workflow اصلی اصلاح شده
   - تأیید موفقیت تمام کامپوننت‌ها
