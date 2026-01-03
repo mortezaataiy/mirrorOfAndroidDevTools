@@ -1,7 +1,10 @@
-name: Android Offline Full Test
+name: Android Offline Full Test (Disabled)
 
 on:
   workflow_dispatch:
+  # Disabled to prevent automatic runs
+  # push:
+  #   branches: [ main ]
 
 jobs:
   android-offline-test:
