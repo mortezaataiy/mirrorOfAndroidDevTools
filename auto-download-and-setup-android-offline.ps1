@@ -209,8 +209,8 @@ class ExecutionModeManager {
             Write-Host "نصب‌کننده پیشرفته آفلاین اندروید" -ForegroundColor Green
             Write-Host "===========================================" -ForegroundColor Green
             Write-Host "حالت اجرا: $($this.CurrentMode)" -ForegroundColor Yellow
-            Write-Host "مسیر نصب: $InstallPath" -ForegroundColor Cyan
-            Write-Host "مسیر منبع: $SourcePath" -ForegroundColor Cyan
+            Write-Host "مسیر نصب: $($Global:INSTALL)" -ForegroundColor Cyan
+            Write-Host "مسیر منبع: $($Global:SOURCE_PATH)" -ForegroundColor Cyan
             
             if ($Global:CheckOnlyMode) {
                 Write-Host "حالت: فقط بررسی (بدون نصب)" -ForegroundColor Yellow
@@ -980,20 +980,6 @@ class VersionCompatibilityManager {
 
 # ایجاد مدیر سازگاری سراسری
 $Global:VersionMgr = [VersionCompatibilityManager]::new($Global:ComponentSignatures)
-        MinVersion = "3.18.0"
-        SearchPatterns = @("*cmake*")
-        Priority = 9
-    }
-    "AndroidStudio" = @{
-        ExecutableFiles = @("studio64.exe", "studio.exe", "studio")
-        RequiredPaths = @("bin", "lib")
-        OptionalPaths = @("plugins", "license")
-        VersionPattern = ""
-        MinVersion = ""
-        SearchPatterns = @("*android-studio*", "*studio*")
-        Priority = 10
-    }
-}
 
 class ComponentInfo {
     [string] $Name
