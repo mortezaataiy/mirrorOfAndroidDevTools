@@ -142,7 +142,7 @@ jobs:
             fi
             
             # ایجاد JSON entry
-            local json_entry=$(cat << EOF
+            cat << JSONEOF > temp_entry.json
           {
             "component_name": "$component_name",
             "status": "$status",
@@ -151,16 +151,17 @@ jobs:
             "timestamp": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
             "checksum": "$checksum"
           }
-          EOF
-          )
+          JSONEOF
             
             # اضافه کردن به فایل JSON
             if [ -f "validation_results.json" ]; then
               # خواندن JSON موجود و اضافه کردن entry جدید
-              jq ". += [$json_entry]" validation_results.json > temp.json && mv temp.json validation_results.json
+              jq ". += [$(cat temp_entry.json)]" validation_results.json > temp.json && mv temp.json validation_results.json
             else
-              echo "[$json_entry]" > validation_results.json
+              echo "[$(cat temp_entry.json)]" > validation_results.json
             fi
+            
+            rm -f temp_entry.json
           }
           EOF
           
