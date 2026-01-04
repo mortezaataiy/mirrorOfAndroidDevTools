@@ -1,5 +1,5 @@
 # فایل‌های دانلود شده - این فایل‌ها نباید در git commit شوند
-.ignoredDownloads/*
+downloaded/*
 
 # فایل‌های موقت ویندوز
 Thumbs.db
