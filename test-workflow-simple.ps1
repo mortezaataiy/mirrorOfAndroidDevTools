@@ -1,72 +1,72 @@
 # Simple Test Workflow Script
-# اسکریپت ساده تست workflow
+# Simple workflow test script
 
-Write-Host "🧪 شروع تست GitHub Action Workflow" -ForegroundColor Cyan
-Write-Host "📅 تاریخ: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')" -ForegroundColor Yellow
+Write-Host "🧪 Starting GitHub Action Workflow Test" -ForegroundColor Cyan
+Write-Host "📅 Date: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')" -ForegroundColor Yellow
 
-# بررسی وجود GitHub CLI
+# Check for GitHub CLI existence
 $ghPath = "C:\Program Files\GitHub CLI\gh.exe"
 if (-not (Test-Path $ghPath)) {
-    Write-Error "❌ GitHub CLI یافت نشد در مسیر: $ghPath"
-    Write-Host "💡 لطفاً GitHub CLI را نصب کنید: https://cli.github.com/" -ForegroundColor Yellow
+    Write-Error "❌ GitHub CLI not found at path: $ghPath"
+    Write-Host "💡 Please install GitHub CLI: https://cli.github.com/" -ForegroundColor Yellow
     exit 1
 }
 
-Write-Host "✅ GitHub CLI یافت شد" -ForegroundColor Green
+Write-Host "✅ GitHub CLI found" -ForegroundColor Green
 
 try {
-    # بررسی وضعیت احراز هویت
-    Write-Host "🔐 بررسی احراز هویت GitHub..." -ForegroundColor Yellow
+    # Check GitHub authentication status
+    Write-Host "🔐 Checking GitHub authentication..." -ForegroundColor Yellow
     $authResult = & $ghPath auth status 2>&1
     
     if ($LASTEXITCODE -ne 0) {
-        Write-Host "❌ احراز هویت GitHub ناموفق است" -ForegroundColor Red
-        Write-Host "💡 لطفاً با دستور زیر احراز هویت کنید:" -ForegroundColor Yellow
+        Write-Host "❌ GitHub authentication failed" -ForegroundColor Red
+        Write-Host "💡 Please authenticate with the following command:" -ForegroundColor Yellow
         Write-Host "gh auth login" -ForegroundColor Cyan
         exit 1
     }
     
-    Write-Host "✅ احراز هویت GitHub موفق است" -ForegroundColor Green
+    Write-Host "✅ GitHub authentication successful" -ForegroundColor Green
     
-    # اجرای workflow
-    Write-Host "🚀 اجرای workflow..." -ForegroundColor Cyan
+    # Run workflow
+    Write-Host "🚀 Running workflow..." -ForegroundColor Cyan
     $runResult = & $ghPath workflow run "android-version-checker.yml" --field force_run=true 2>&1
     
     if ($LASTEXITCODE -ne 0) {
-        Write-Host "❌ خطا در اجرای workflow: $runResult" -ForegroundColor Red
+        Write-Host "❌ Error running workflow: $runResult" -ForegroundColor Red
         exit 1
     }
     
-    Write-Host "✅ Workflow با موفقیت شروع شد" -ForegroundColor Green
+    Write-Host "✅ Workflow started successfully" -ForegroundColor Green
     
-    # نمایش آخرین اجراها
-    Write-Host "📋 آخرین اجراهای workflow:" -ForegroundColor Cyan
+    # Show latest runs
+    Write-Host "📋 Latest workflow runs:" -ForegroundColor Cyan
     & $ghPath run list --workflow="android-version-checker.yml" --limit=5
     
-    # دریافت ID آخرین اجرا
-    Write-Host "🔍 دریافت ID آخرین اجرا..." -ForegroundColor Yellow
+    # Get latest run ID
+    Write-Host "🔍 Getting latest run ID..." -ForegroundColor Yellow
     $runListOutput = & $ghPath run list --workflow="android-version-checker.yml" --limit=1 --json=databaseId 2>&1
     
     if ($LASTEXITCODE -eq 0) {
         $runData = $runListOutput | ConvertFrom-Json
         if ($runData -and $runData.databaseId) {
             $latestRunId = $runData.databaseId
-            Write-Host "🆔 ID آخرین اجرا: $latestRunId" -ForegroundColor Yellow
+            Write-Host "🆔 Latest run ID: $latestRunId" -ForegroundColor Yellow
             
-            # پیشنهاد دستورات مفید
-            Write-Host "💡 دستورات مفید:" -ForegroundColor Yellow
-            Write-Host "  📊 مشاهده جزئیات: gh run view $latestRunId" -ForegroundColor Cyan
-            Write-Host "  📥 دانلود artifacts: gh run download $latestRunId" -ForegroundColor Cyan
-            Write-Host "  📜 مشاهده لاگ‌ها: gh run view $latestRunId --log" -ForegroundColor Cyan
+            # Suggest useful commands
+            Write-Host "💡 Useful commands:" -ForegroundColor Yellow
+            Write-Host "  📊 View details: gh run view $latestRunId" -ForegroundColor Cyan
+            Write-Host "  📥 Download artifacts: gh run download $latestRunId" -ForegroundColor Cyan
+            Write-Host "  📜 View logs: gh run view $latestRunId --log" -ForegroundColor Cyan
         }
     }
     
-    Write-Host "✅ تست workflow با موفقیت انجام شد" -ForegroundColor Green
+    Write-Host "✅ Workflow test completed successfully" -ForegroundColor Green
 }
 catch {
-    Write-Host "❌ خطا در تست workflow: $($_.Exception.Message)" -ForegroundColor Red
+    Write-Host "❌ Error in workflow test: $($_.Exception.Message)" -ForegroundColor Red
     exit 1
 }
 finally {
-    Write-Host "🏁 پایان تست" -ForegroundColor Cyan
+    Write-Host "🏁 Test completed" -ForegroundColor Cyan
 }

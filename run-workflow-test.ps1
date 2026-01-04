@@ -1,18 +1,18 @@
 # Run Workflow Test
-Write-Host "🧪 تست اجرای workflow" -ForegroundColor Cyan
+Write-Host "🧪 Running workflow test" -ForegroundColor Cyan
 
 $ghPath = "C:\Program Files\GitHub CLI\gh.exe"
 
 if (Test-Path $ghPath) {
-    Write-Host "✅ GitHub CLI یافت شد" -ForegroundColor Green
+    Write-Host "✅ GitHub CLI found" -ForegroundColor Green
     
-    Write-Host "🚀 اجرای workflow..." -ForegroundColor Yellow
+    Write-Host "🚀 Running workflow..." -ForegroundColor Yellow
     & $ghPath workflow run "android-version-checker.yml" --field force_run=true
     
-    Write-Host "📋 لیست اجراها:" -ForegroundColor Yellow
+    Write-Host "📋 Run list:" -ForegroundColor Yellow
     & $ghPath run list --workflow="android-version-checker.yml" --limit=3
     
-    Write-Host "✅ تست تکمیل شد" -ForegroundColor Green
+    Write-Host "✅ Test completed" -ForegroundColor Green
 } else {
-    Write-Host "❌ GitHub CLI یافت نشد" -ForegroundColor Red
+    Write-Host "❌ GitHub CLI not found" -ForegroundColor Red
 }

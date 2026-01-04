@@ -1,7 +1,7 @@
 # Error Handler and Logging System
-# مسئول مدیریت خطاها و لاگ‌گذاری
+# Responsible for error management and logging
 
-# تعریف انواع خطا
+# Define error types
 enum ErrorType {
     NetworkError
     FileError
@@ -11,7 +11,7 @@ enum ErrorType {
     ConfigurationError
 }
 
-# کلاس اطلاعات خطا
+# Error information class
 class ErrorInfo {
     [datetime]$Timestamp
     [ErrorType]$Type
@@ -29,11 +29,11 @@ class ErrorInfo {
     }
 }
 
-# متغیر سراسری برای ذخیره لاگ‌ها
+# Global variables for storing logs
 $Global:ErrorLog = @()
 $Global:ActivityLog = @()
 
-# تابع لاگ‌گذاری عمومی
+# General logging function
 function Write-ActivityLog {
     param(
         [string]$Message,
@@ -51,7 +51,7 @@ function Write-ActivityLog {
     
     $Global:ActivityLog += $logEntry
     
-    # نمایش در کنسول با رنگ مناسب
+    # Display in console with appropriate color
     $color = switch ($Level) {
         "ERROR" { "Red" }
         "WARNING" { "Yellow" }
@@ -71,7 +71,7 @@ function Write-ActivityLog {
     Write-Host "$prefix [$timestamp] $Message" -ForegroundColor $color
 }
 
-# مدیریت خطا با استراتژی مناسب
+# Error management with appropriate strategy
 function Handle-Error {
     param(
         [ErrorType]$ErrorType,
@@ -83,32 +83,32 @@ function Handle-Error {
     $errorInfo = [ErrorInfo]::new($ErrorType, $ErrorMessage, $Context)
     $errorInfo.Details = $Details
     
-    Write-ActivityLog -Message "خطا رخ داد: $ErrorMessage" -Level "ERROR" -Context $Context
+    Write-ActivityLog -Message "Error occurred: $ErrorMessage" -Level "ERROR" -Context $Context
     
     switch ($ErrorType) {
         ([ErrorType]::NetworkError) {
-            $errorInfo.ActionTaken = "تلاش مجدد تا ۳ بار"
-            Write-ActivityLog -Message "خطای شبکه - آماده تلاش مجدد" -Level "WARNING"
+            $errorInfo.ActionTaken = "Retry up to 3 times"
+            Write-ActivityLog -Message "Network error - preparing for retry" -Level "WARNING"
         }
         ([ErrorType]::FileError) {
-            $errorInfo.ActionTaken = "متوقف کردن فرایند و گزارش خطا"
-            Write-ActivityLog -Message "خطای فایل - فرایند متوقف می‌شود" -Level "ERROR"
+            $errorInfo.ActionTaken = "Stop process and report error"
+            Write-ActivityLog -Message "File error - process will be stopped" -Level "ERROR"
         }
         ([ErrorType]::InstallError) {
-            $errorInfo.ActionTaken = "بررسی وابستگی‌ها و تلاش مجدد"
-            Write-ActivityLog -Message "خطای نصب - بررسی پیش‌نیازها" -Level "WARNING"
+            $errorInfo.ActionTaken = "Check dependencies and retry"
+            Write-ActivityLog -Message "Install error - checking prerequisites" -Level "WARNING"
         }
         ([ErrorType]::BuildError) {
-            $errorInfo.ActionTaken = "نمایش جزئیات خطای کامپایل"
-            Write-ActivityLog -Message "خطای بیلد - نمایش جزئیات" -Level "ERROR"
+            $errorInfo.ActionTaken = "Display compile error details"
+            Write-ActivityLog -Message "Build error - displaying details" -Level "ERROR"
         }
         ([ErrorType]::ValidationError) {
-            $errorInfo.ActionTaken = "بررسی مجدد پارامترهای ورودی"
-            Write-ActivityLog -Message "خطای اعتبارسنجی - بررسی ورودی‌ها" -Level "WARNING"
+            $errorInfo.ActionTaken = "Re-check input parameters"
+            Write-ActivityLog -Message "Validation error - checking inputs" -Level "WARNING"
         }
         ([ErrorType]::ConfigurationError) {
-            $errorInfo.ActionTaken = "بازنشانی تنظیمات به حالت پیش‌فرض"
-            Write-ActivityLog -Message "خطای پیکربندی - بازنشانی تنظیمات" -Level "WARNING"
+            $errorInfo.ActionTaken = "Reset settings to default"
+            Write-ActivityLog -Message "Configuration error - resetting settings" -Level "WARNING"
         }
     }
     
@@ -116,63 +116,63 @@ function Handle-Error {
     return $errorInfo
 }
 
-# تلاش مجدد عملیات
+# Retry operation
 function Retry-Operation {
     param(
         [scriptblock]$Operation,
         [int]$MaxAttempts = 3,
         [int]$DelaySeconds = 2,
-        [string]$OperationName = "عملیات"
+        [string]$OperationName = "operation"
     )
     
     $attempt = 1
     while ($attempt -le $MaxAttempts) {
         try {
-            Write-ActivityLog -Message "تلاش $attempt از $MaxAttempts برای $OperationName" -Level "INFO"
+            Write-ActivityLog -Message "Attempt $attempt of $MaxAttempts for $OperationName" -Level "INFO"
             
             $result = & $Operation
             
-            Write-ActivityLog -Message "$OperationName با موفقیت انجام شد" -Level "SUCCESS"
+            Write-ActivityLog -Message "$OperationName completed successfully" -Level "SUCCESS"
             return $result
         }
         catch {
             $errorMsg = $_.Exception.Message
-            Write-ActivityLog -Message "تلاش $attempt ناموفق: $errorMsg" -Level "WARNING"
+            Write-ActivityLog -Message "Attempt $attempt failed: $errorMsg" -Level "WARNING"
             
             if ($attempt -eq $MaxAttempts) {
-                Handle-Error -ErrorType ([ErrorType]::NetworkError) -ErrorMessage "عملیات پس از $MaxAttempts تلاش ناموفق بود: $errorMsg" -Context $OperationName
+                Handle-Error -ErrorType ([ErrorType]::NetworkError) -ErrorMessage "Operation failed after $MaxAttempts attempts: $errorMsg" -Context $OperationName
                 throw $_
             }
             
             $attempt++
             if ($DelaySeconds -gt 0) {
-                Write-ActivityLog -Message "انتظار $DelaySeconds ثانیه قبل از تلاش مجدد..." -Level "INFO"
+                Write-ActivityLog -Message "Waiting $DelaySeconds seconds before retry..." -Level "INFO"
                 Start-Sleep -Seconds $DelaySeconds
             }
         }
     }
 }
 
-# نمایش خلاصه خطاها
+# Show error summary
 function Show-ErrorSummary {
-    Write-ActivityLog -Message "=== خلاصه خطاها ===" -Level "INFO"
+    Write-ActivityLog -Message "=== Error Summary ===" -Level "INFO"
     
     if ($Global:ErrorLog.Count -eq 0) {
-        Write-ActivityLog -Message "هیچ خطایی رخ نداده است" -Level "SUCCESS"
+        Write-ActivityLog -Message "No errors occurred" -Level "SUCCESS"
         return
     }
     
     $errorGroups = $Global:ErrorLog | Group-Object Type
     foreach ($group in $errorGroups) {
-        Write-ActivityLog -Message "$($group.Name): $($group.Count) خطا" -Level "WARNING"
+        Write-ActivityLog -Message "$($group.Name): $($group.Count) errors" -Level "WARNING"
     }
     
-    Write-ActivityLog -Message "جمع کل خطاها: $($Global:ErrorLog.Count)" -Level "ERROR"
+    Write-ActivityLog -Message "Total errors: $($Global:ErrorLog.Count)" -Level "ERROR"
 }
 
-# نمایش خلاصه فعالیت‌ها
+# Show activity summary
 function Show-ActivitySummary {
-    Write-ActivityLog -Message "=== خلاصه فعالیت‌ها ===" -Level "INFO"
+    Write-ActivityLog -Message "=== Activity Summary ===" -Level "INFO"
     
     $levelGroups = $Global:ActivityLog | Group-Object Level
     foreach ($group in $levelGroups) {
@@ -186,7 +186,7 @@ function Show-ActivitySummary {
     }
 }
 
-# ذخیره لاگ‌ها در فایل
+# Save logs to file
 function Save-LogsToFile {
     param([string]$OutputPath = "logs")
     
@@ -196,24 +196,24 @@ function Save-LogsToFile {
     
     $timestamp = Get-Date -Format "yyyyMMdd-HHmmss"
     
-    # ذخیره لاگ فعالیت‌ها
+    # Save activity log
     $activityLogPath = Join-Path $OutputPath "activity-$timestamp.json"
     $Global:ActivityLog | ConvertTo-Json -Depth 3 | Out-File -FilePath $activityLogPath -Encoding UTF8
     
-    # ذخیره لاگ خطاها
+    # Save error log
     if ($Global:ErrorLog.Count -gt 0) {
         $errorLogPath = Join-Path $OutputPath "errors-$timestamp.json"
         $Global:ErrorLog | ConvertTo-Json -Depth 3 | Out-File -FilePath $errorLogPath -Encoding UTF8
     }
     
-    Write-ActivityLog -Message "لاگ‌ها در $OutputPath ذخیره شدند" -Level "SUCCESS"
+    Write-ActivityLog -Message "Logs saved to $OutputPath" -Level "SUCCESS"
 }
 
-# پاک کردن لاگ‌ها
+# Clear logs
 function Clear-Logs {
     $Global:ErrorLog = @()
     $Global:ActivityLog = @()
-    Write-Host "🧹 لاگ‌ها پاک شدند" -ForegroundColor Green
+    Write-Host "🧹 Logs cleared" -ForegroundColor Green
 }
 
 # Export functions
