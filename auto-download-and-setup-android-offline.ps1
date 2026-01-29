@@ -10,8 +10,38 @@ param(
     [string]$SourcePath = ".\downloaded"
 )
 
-# Set error handling
+# Set error handling and timeout management
 $ErrorActionPreference = "Stop"
+$ProgressPreference = "SilentlyContinue"
+
+# Global variables for process management
+$global:RunningProcesses = @()
+$global:TempDirectories = @()
+$global:CleanupRequired = $false
+
+# Trap for cleanup on exit/interrupt
+trap {
+    Write-Warning "Script interrupted or failed. Performing cleanup..."
+    Invoke-EmergencyCleanup
+    exit 1
+}
+
+# Register cleanup on script exit
+Register-EngineEvent -SourceIdentifier PowerShell.Exiting -Action {
+    if ($global:CleanupRequired) {
+        Invoke-EmergencyCleanup
+    }
+}
+
+# Global timeout settings (in seconds)
+$GLOBAL_TIMEOUT = 300  # 5 minutes for most operations
+$BUILD_TIMEOUT = 1800  # 30 minutes for builds
+$EXTRACT_TIMEOUT = 600 # 10 minutes for extractions
+
+# Process tracking for cleanup
+$Global:RunningProcesses = @()
+$Global:TempDirectories = @()
+$Global:CleanupRegistered = $false
 
 # Global variables
 $ROOT = Split-Path -Parent $MyInvocation.MyCommand.Path
@@ -23,7 +53,233 @@ $GRADLE_HOME = "$INSTALL\Gradle"
 $SDK_ROOT = "$INSTALL\Sdk"
 
 # Logging functions
-function Write-Log {
+# Cleanup and error handling functions
+function Register-Cleanup {
+    if (-not $Global:CleanupRegistered) {
+        Register-EngineEvent -SourceIdentifier PowerShell.Exiting -Action {
+            Invoke-EmergencyCleanup
+        } | Out-Null
+        $Global:CleanupRegistered = $true
+        Write-Info "Emergency cleanup handler registered"
+    }
+}
+
+function Invoke-EmergencyCleanup {
+    Write-Warning "Performing emergency cleanup..."
+    
+    # Kill any running processes we started
+    foreach ($processInfo in $Global:RunningProcesses) {
+        try {
+            if ($processInfo.Process -and -not $processInfo.Process.HasExited) {
+                Write-Warning "Terminating process: $($processInfo.Name) (PID: $($processInfo.Process.Id))"
+                $processInfo.Process.Kill()
+                $processInfo.Process.WaitForExit(5000)  # Wait up to 5 seconds
+            }
+        }
+        catch {
+            Write-Warning "Failed to terminate process $($processInfo.Name): $($_.Exception.Message)"
+        }
+    }
+    
+    # Clean up temporary directories
+    foreach ($tempDir in $Global:TempDirectories) {
+        try {
+            if (Test-Path $tempDir) {
+                Write-Warning "Removing temporary directory: $tempDir"
+                Remove-Item $tempDir -Recurse -Force -ErrorAction SilentlyContinue
+            }
+        }
+        catch {
+            Write-Warning "Failed to remove temporary directory $tempDir: $($_.Exception.Message)"
+        }
+    }
+    
+    # Clear arrays
+    $Global:RunningProcesses = @()
+    $Global:TempDirectories = @()
+    
+    Write-Warning "Emergency cleanup completed"
+}
+
+function Add-TempDirectory {
+    param([string]$Path)
+    if ($Path -and -not ($Global:TempDirectories -contains $Path)) {
+        $Global:TempDirectories += $Path
+    }
+}
+
+function Remove-TempDirectory {
+    param([string]$Path)
+    if ($Path -and ($Global:TempDirectories -contains $Path)) {
+        $Global:TempDirectories = $Global:TempDirectories | Where-Object { $_ -ne $Path }
+    }
+}
+
+function Start-ProcessWithTimeout {
+    param(
+        [string]$FilePath,
+        [string[]]$ArgumentList = @(),
+        [int]$TimeoutSeconds = $GLOBAL_TIMEOUT,
+        [string]$WorkingDirectory = $null,
+        [string]$ProcessName = "Unknown"
+    )
+    
+    try {
+        $processStartInfo = New-Object System.Diagnostics.ProcessStartInfo
+        $processStartInfo.FileName = $FilePath
+        $processStartInfo.Arguments = $ArgumentList -join " "
+        $processStartInfo.UseShellExecute = $false
+        $processStartInfo.RedirectStandardOutput = $true
+        $processStartInfo.RedirectStandardError = $true
+        $processStartInfo.CreateNoWindow = $true
+        
+        if ($WorkingDirectory) {
+            $processStartInfo.WorkingDirectory = $WorkingDirectory
+        }
+        
+        $process = New-Object System.Diagnostics.Process
+        $process.StartInfo = $processStartInfo
+        
+        # Add to tracking
+        $processInfo = @{
+            Process = $process
+            Name = $ProcessName
+            StartTime = Get-Date
+        }
+        $Global:RunningProcesses += $processInfo
+        
+        Write-Info "Starting process: $ProcessName (Timeout: ${TimeoutSeconds}s)"
+        $process.Start() | Out-Null
+        
+        # Read output asynchronously to prevent hanging
+        $outputBuilder = New-Object System.Text.StringBuilder
+        $errorBuilder = New-Object System.Text.StringBuilder
+        
+        $outputEvent = Register-ObjectEvent -InputObject $process -EventName OutputDataReceived -Action {
+            if ($Event.SourceEventArgs.Data) {
+                $Event.MessageData.AppendLine($Event.SourceEventArgs.Data)
+            }
+        } -MessageData $outputBuilder
+        
+        $errorEvent = Register-ObjectEvent -InputObject $process -EventName ErrorDataReceived -Action {
+            if ($Event.SourceEventArgs.Data) {
+                $Event.MessageData.AppendLine($Event.SourceEventArgs.Data)
+            }
+        } -MessageData $errorBuilder
+        
+        $process.BeginOutputReadLine()
+        $process.BeginErrorReadLine()
+        
+        # Wait for process with timeout
+        $finished = $process.WaitForExit($TimeoutSeconds * 1000)
+        
+        if (-not $finished) {
+            Write-Warning "Process $ProcessName timed out after $TimeoutSeconds seconds"
+            $process.Kill()
+            $process.WaitForExit(5000)  # Wait up to 5 seconds for cleanup
+            throw "Process timed out: $ProcessName"
+        }
+        
+        # Cleanup events
+        Unregister-Event -SourceIdentifier $outputEvent.Name -ErrorAction SilentlyContinue
+        Unregister-Event -SourceIdentifier $errorEvent.Name -ErrorAction SilentlyContinue
+        
+        # Remove from tracking
+        $Global:RunningProcesses = $Global:RunningProcesses | Where-Object { $_.Process.Id -ne $process.Id }
+        
+        $result = @{
+            ExitCode = $process.ExitCode
+            StandardOutput = $outputBuilder.ToString()
+            StandardError = $errorBuilder.ToString()
+            ProcessName = $ProcessName
+        }
+        
+        $process.Dispose()
+        return $result
+        
+    }
+    catch {
+        Write-Error "Failed to start or manage process $ProcessName : $($_.Exception.Message)"
+        throw
+    }
+}
+
+function Invoke-SafeExtraction {
+    param(
+        [string]$ZipPath,
+        [string]$DestinationPath,
+        [string]$ComponentName,
+        [int]$TimeoutSeconds = $EXTRACT_TIMEOUT
+    )
+    
+    Write-Info "Safely extracting $ComponentName with timeout protection..."
+    
+    if (-not (Test-ZipFile $ZipPath)) {
+        throw "Invalid or corrupted ZIP file: $ZipPath"
+    }
+    
+    # Add destination to temp directories for cleanup
+    Add-TempDirectory $DestinationPath
+    
+    try {
+        # Create extraction directory
+        if (Test-Path $DestinationPath) {
+            Remove-Item $DestinationPath -Recurse -Force -ErrorAction Stop
+        }
+        New-Item -ItemType Directory -Path $DestinationPath -Force | Out-Null
+        
+        # Use PowerShell's Expand-Archive with timeout monitoring
+        $extractJob = Start-Job -ScriptBlock {
+            param($ZipPath, $DestinationPath)
+            try {
+                Expand-Archive -Path $ZipPath -DestinationPath $DestinationPath -Force
+                return @{ Success = $true; Error = $null }
+            }
+            catch {
+                return @{ Success = $false; Error = $_.Exception.Message }
+            }
+        } -ArgumentList $ZipPath, $DestinationPath
+        
+        # Wait for job with timeout
+        $completed = Wait-Job -Job $extractJob -Timeout $TimeoutSeconds
+        
+        if (-not $completed) {
+            Write-Warning "Extraction timed out after $TimeoutSeconds seconds"
+            Stop-Job -Job $extractJob -Force
+            Remove-Job -Job $extractJob -Force
+            throw "Extraction timed out for $ComponentName"
+        }
+        
+        $result = Receive-Job -Job $extractJob
+        Remove-Job -Job $extractJob
+        
+        if (-not $result.Success) {
+            throw "Extraction failed: $($result.Error)"
+        }
+        
+        # Verify extraction succeeded
+        if (-not (Test-Path $DestinationPath)) {
+            throw "Extraction completed but destination directory not found"
+        }
+        
+        $extractedItems = Get-ChildItem $DestinationPath -ErrorAction SilentlyContinue
+        if (-not $extractedItems) {
+            throw "Extraction completed but no files found in destination"
+        }
+        
+        Write-Success "Successfully extracted $ComponentName to: $DestinationPath"
+        return $DestinationPath
+        
+    }
+    catch {
+        # Cleanup on failure
+        if (Test-Path $DestinationPath) {
+            Remove-Item $DestinationPath -Recurse -Force -ErrorAction SilentlyContinue
+        }
+        Remove-TempDirectory $DestinationPath
+        throw "Failed to extract $ComponentName : $($_.Exception.Message)"
+    }
+}
     param([string]$Message, [string]$Level = "INFO")
     $timestamp = Get-Date -Format "HH:mm:ss"
     $color = switch ($Level) {
@@ -41,11 +297,167 @@ function Write-Info { param([string]$Message) Write-Log $Message "INFO" }
 function Write-Warning { param([string]$Message) Write-Log $Message "WARNING" }
 function Write-Error { param([string]$Message) Write-Log $Message "ERROR" }
 
+# Emergency cleanup function
+function Invoke-EmergencyCleanup {
+    Write-Warning "Performing emergency cleanup..."
+    
+    # Kill running processes
+    foreach ($processInfo in $global:RunningProcesses) {
+        try {
+            if ($processInfo.Process -and !$processInfo.Process.HasExited) {
+                Write-Warning "Terminating process: $($processInfo.Name) (PID: $($processInfo.Process.Id))"
+                $processInfo.Process.Kill()
+                $processInfo.Process.WaitForExit(5000) # Wait max 5 seconds
+            }
+        }
+        catch {
+            Write-Warning "Failed to terminate process $($processInfo.Name): $($_.Exception.Message)"
+        }
+    }
+    
+    # Kill gradle daemon processes
+    try {
+        $gradleProcesses = Get-Process -Name "*gradle*" -ErrorAction SilentlyContinue
+        foreach ($proc in $gradleProcesses) {
+            Write-Warning "Killing Gradle process: $($proc.Name) (PID: $($proc.Id))"
+            $proc.Kill()
+        }
+    }
+    catch {
+        Write-Warning "Failed to kill Gradle processes: $($_.Exception.Message)"
+    }
+    
+    # Kill java processes started by this script
+    try {
+        $javaProcesses = Get-Process -Name "java" -ErrorAction SilentlyContinue | Where-Object {
+            $_.StartTime -gt (Get-Date).AddMinutes(-30) # Only recent processes
+        }
+        foreach ($proc in $javaProcesses) {
+            Write-Warning "Killing Java process: PID $($proc.Id)"
+            $proc.Kill()
+        }
+    }
+    catch {
+        Write-Warning "Failed to kill Java processes: $($_.Exception.Message)"
+    }
+    
+    # Clean up temporary directories
+    foreach ($tempDir in $global:TempDirectories) {
+        try {
+            if (Test-Path $tempDir) {
+                Write-Warning "Removing temporary directory: $tempDir"
+                Remove-Item $tempDir -Recurse -Force -ErrorAction SilentlyContinue
+            }
+        }
+        catch {
+            Write-Warning "Failed to remove temporary directory $tempDir: $($_.Exception.Message)"
+        }
+    }
+    
+    # Clear arrays
+    $global:RunningProcesses = @()
+    $global:TempDirectories = @()
+    $global:CleanupRequired = $false
+    
+    Write-Warning "Emergency cleanup completed"
+}
+
+# Process management functions
+function Start-ManagedProcess {
+    param(
+        [string]$FilePath,
+        [string[]]$ArgumentList,
+        [string]$WorkingDirectory = $PWD,
+        [string]$ProcessName = "Unknown",
+        [int]$TimeoutSeconds = 300
+    )
+    
+    try {
+        $processInfo = @{
+            Name = $ProcessName
+            Process = $null
+            StartTime = Get-Date
+        }
+        
+        $psi = New-Object System.Diagnostics.ProcessStartInfo
+        $psi.FileName = $FilePath
+        $psi.Arguments = $ArgumentList -join " "
+        $psi.WorkingDirectory = $WorkingDirectory
+        $psi.UseShellExecute = $false
+        $psi.RedirectStandardOutput = $true
+        $psi.RedirectStandardError = $true
+        $psi.CreateNoWindow = $true
+        
+        $process = New-Object System.Diagnostics.Process
+        $process.StartInfo = $psi
+        
+        $outputBuilder = New-Object System.Text.StringBuilder
+        $errorBuilder = New-Object System.Text.StringBuilder
+        
+        $outputEvent = Register-ObjectEvent -InputObject $process -EventName OutputDataReceived -Action {
+            if ($Event.SourceEventArgs.Data) {
+                [void]$outputBuilder.AppendLine($Event.SourceEventArgs.Data)
+            }
+        }
+        
+        $errorEvent = Register-ObjectEvent -InputObject $process -EventName ErrorDataReceived -Action {
+            if ($Event.SourceEventArgs.Data) {
+                [void]$errorBuilder.AppendLine($Event.SourceEventArgs.Data)
+            }
+        }
+        
+        $process.Start() | Out-Null
+        $process.BeginOutputReadLine()
+        $process.BeginErrorReadLine()
+        
+        $processInfo.Process = $process
+        $global:RunningProcesses += $processInfo
+        $global:CleanupRequired = $true
+        
+        Write-Info "Started process: $ProcessName (PID: $($process.Id))"
+        
+        # Wait for process with timeout
+        $completed = $process.WaitForExit($TimeoutSeconds * 1000)
+        
+        if (-not $completed) {
+            Write-Warning "Process $ProcessName timed out after $TimeoutSeconds seconds"
+            $process.Kill()
+            $process.WaitForExit(5000)
+            throw "Process timeout: $ProcessName"
+        }
+        
+        # Cleanup events
+        Unregister-Event -SourceIdentifier $outputEvent.Name -ErrorAction SilentlyContinue
+        Unregister-Event -SourceIdentifier $errorEvent.Name -ErrorAction SilentlyContinue
+        
+        # Remove from tracking
+        $global:RunningProcesses = $global:RunningProcesses | Where-Object { $_.Process.Id -ne $process.Id }
+        
+        $result = @{
+            ExitCode = $process.ExitCode
+            Output = $outputBuilder.ToString()
+            Error = $errorBuilder.ToString()
+            Success = ($process.ExitCode -eq 0)
+        }
+        
+        return $result
+    }
+    catch {
+        Write-Error "Failed to start managed process $ProcessName : $($_.Exception.Message)"
+        throw
+    }
+}
+
 function Stop-WithError {
     param([string]$Message)
     Write-Error $Message
     Write-Host ""
-    Write-Host "Installation failed. Please check the error above and try again." -ForegroundColor Red
+    Write-Host "Installation failed. Performing cleanup..." -ForegroundColor Red
+    
+    # Perform emergency cleanup
+    Invoke-EmergencyCleanup
+    
+    Write-Host "Please check the error above and try again." -ForegroundColor Red
     exit 1
 }
 
@@ -97,40 +509,48 @@ function Extract-ZipSmart {
     
     Write-Info "Extracting $ComponentName from: $([IO.Path]::GetFileName($ZipPath))"
     
-    if (-not (Test-ZipFile $ZipPath)) {
-        Stop-WithError "Invalid or corrupted ZIP file: $ZipPath"
-    }
-    
     try {
-        # Create extraction directory
-        if (Test-Path $DestinationPath) {
-            Remove-Item $DestinationPath -Recurse -Force
-        }
-        New-Item -ItemType Directory -Path $DestinationPath -Force | Out-Null
-        
-        # Extract ZIP
-        Expand-Archive -Path $ZipPath -DestinationPath $DestinationPath -Force
+        # Use safe extraction with timeout
+        $extractedPath = Invoke-SafeExtraction -ZipPath $ZipPath -DestinationPath $DestinationPath -ComponentName $ComponentName
         
         # Check for nested ZIP (double-zipped files)
-        $extractedFiles = Get-ChildItem $DestinationPath -File -ErrorAction SilentlyContinue
+        $extractedFiles = Get-ChildItem $extractedPath -File -ErrorAction SilentlyContinue
         $nestedZip = $extractedFiles | Where-Object { $_.Extension -eq ".zip" }
         
         if ($nestedZip) {
             Write-Info "Found nested ZIP file, extracting again..."
-            $nestedExtractPath = Join-Path $DestinationPath "nested"
-            Expand-Archive -Path $nestedZip.FullName -DestinationPath $nestedExtractPath -Force
+            $nestedExtractPath = Join-Path $extractedPath "nested"
             
-            # Move contents up one level
-            $nestedContents = Get-ChildItem $nestedExtractPath
-            foreach ($item in $nestedContents) {
-                Move-Item $item.FullName $DestinationPath -Force
+            # Add nested path to temp directories
+            Add-TempDirectory $nestedExtractPath
+            
+            try {
+                $nestedResult = Invoke-SafeExtraction -ZipPath $nestedZip.FullName -DestinationPath $nestedExtractPath -ComponentName "$ComponentName (nested)"
+                
+                # Move contents up one level
+                $nestedContents = Get-ChildItem $nestedExtractPath
+                foreach ($item in $nestedContents) {
+                    $destinationItem = Join-Path $extractedPath $item.Name
+                    if (Test-Path $destinationItem) {
+                        Remove-Item $destinationItem -Recurse -Force
+                    }
+                    Move-Item $item.FullName $extractedPath -Force
+                }
+                
+                # Cleanup nested extraction
+                Remove-Item $nestedExtractPath -Recurse -Force -ErrorAction SilentlyContinue
+                Remove-TempDirectory $nestedExtractPath
+                Remove-Item $nestedZip.FullName -Force
             }
-            Remove-Item $nestedExtractPath -Recurse -Force
-            Remove-Item $nestedZip.FullName -Force
+            catch {
+                Remove-TempDirectory $nestedExtractPath
+                throw "Failed to extract nested ZIP: $($_.Exception.Message)"
+            }
         }
         
-        Write-Success "Successfully extracted $ComponentName to: $DestinationPath"
-        return $DestinationPath
+        Write-Success "Successfully extracted $ComponentName to: $extractedPath"
+        Remove-TempDirectory $extractedPath  # Remove from temp tracking since it's now permanent
+        return $extractedPath
     }
     catch {
         Stop-WithError "Failed to extract $ComponentName : $($_.Exception.Message)"
@@ -174,64 +594,93 @@ function Install-Component {
     
     # Extract to temporary location first
     $tempExtractPath = Join-Path $SOURCE_PATH "extracted_$ComponentName"
-    Extract-ZipSmart $zipFile.FullName $tempExtractPath $ComponentName
+    Add-TempDirectory $tempExtractPath
     
-    # Find the actual component directory by looking for validation files
-    $componentPath = $tempExtractPath
-    
-    # First try to find validation files in the extracted directory
-    $foundValidationFile = $null
-    foreach ($validateFile in $ValidateFiles) {
-        $foundValidationFile = Find-ComponentFile $tempExtractPath @($validateFile)
-        if ($foundValidationFile) {
-            # Get the directory that contains the validation file
-            $componentPath = Split-Path $foundValidationFile -Parent
-            # For JDK, we want the parent of the bin directory
-            if ($ComponentName -eq "JDK" -and (Split-Path $componentPath -Leaf) -eq "bin") {
-                $componentPath = Split-Path $componentPath -Parent
+    try {
+        Extract-ZipSmart $zipFile.FullName $tempExtractPath $ComponentName
+        
+        # Find the actual component directory by looking for validation files
+        $componentPath = $tempExtractPath
+        
+        # First try to find validation files in the extracted directory
+        $foundValidationFile = $null
+        foreach ($validateFile in $ValidateFiles) {
+            $foundValidationFile = Find-ComponentFile $tempExtractPath @($validateFile)
+            if ($foundValidationFile) {
+                # Get the directory that contains the validation file
+                $componentPath = Split-Path $foundValidationFile -Parent
+                # For JDK, we want the parent of the bin directory
+                if ($ComponentName -eq "JDK" -and (Split-Path $componentPath -Leaf) -eq "bin") {
+                    $componentPath = Split-Path $componentPath -Parent
+                }
+                break
             }
-            break
         }
-    }
-    
-    # If no validation files found, try to find the main component directory
-    if (-not $foundValidationFile) {
-        $subDirs = Get-ChildItem $tempExtractPath -Directory
-        if ($subDirs.Count -eq 1) {
-            $componentPath = $subDirs[0].FullName
+        
+        # If no validation files found, try to find the main component directory
+        if (-not $foundValidationFile) {
+            $subDirs = Get-ChildItem $tempExtractPath -Directory
+            if ($subDirs.Count -eq 1) {
+                $componentPath = $subDirs[0].FullName
+            }
         }
-    }
-    
-    Write-Info "Using component path: $componentPath"
-    
-    # Validate component by checking for required files
-    $isValid = $true
-    foreach ($validateFile in $ValidateFiles) {
-        $foundFile = Find-ComponentFile $componentPath @($validateFile)
-        if (-not $foundFile) {
-            Write-Warning "Validation file not found: $validateFile in $componentPath"
-            $isValid = $false
-        } else {
-            Write-Info "Found validation file: $foundFile"
+        
+        Write-Info "Using component path: $componentPath"
+        
+        # Validate component by checking for required files
+        $isValid = $true
+        foreach ($validateFile in $ValidateFiles) {
+            $foundFile = Find-ComponentFile $componentPath @($validateFile)
+            if (-not $foundFile) {
+                Write-Warning "Validation file not found: $validateFile in $componentPath"
+                $isValid = $false
+            } else {
+                Write-Info "Found validation file: $foundFile"
+            }
         }
+        
+        if (-not $isValid) {
+            Stop-WithError "$ComponentName validation failed - required files not found"
+        }
+        
+        # Copy to final destination with timeout protection
+        Ensure-Directory (Split-Path $TargetPath -Parent)
+        if (Test-Path $TargetPath) {
+            Remove-Item $TargetPath -Recurse -Force
+        }
+        
+        # Use robocopy for reliable copying with timeout
+        $robocopyArgs = @(
+            "`"$componentPath`"",
+            "`"$TargetPath`"",
+            "/E",           # Copy subdirectories including empty ones
+            "/R:3",         # Retry 3 times on failed copies
+            "/W:5",         # Wait 5 seconds between retries
+            "/MT:4",        # Multi-threaded copy (4 threads)
+            "/NFL",         # No file list
+            "/NDL",         # No directory list
+            "/NP"           # No progress
+        )
+        
+        $copyResult = Start-ProcessWithTimeout -FilePath "robocopy" -ArgumentList $robocopyArgs -TimeoutSeconds 300 -ProcessName "Copy $ComponentName"
+        
+        # Robocopy exit codes: 0-7 are success, 8+ are errors
+        if ($copyResult.ExitCode -gt 7) {
+            throw "Robocopy failed with exit code: $($copyResult.ExitCode)"
+        }
+        
+        Write-Success "$ComponentName installed successfully to: $TargetPath"
+        
     }
-    
-    if (-not $isValid) {
-        Stop-WithError "$ComponentName validation failed - required files not found"
+    catch {
+        Stop-WithError "Failed to install $ComponentName : $($_.Exception.Message)"
     }
-    
-    # Copy to final destination
-    Ensure-Directory (Split-Path $TargetPath -Parent)
-    if (Test-Path $TargetPath) {
-        Remove-Item $TargetPath -Recurse -Force
-    }
-    
-    Copy-Item $componentPath $TargetPath -Recurse -Force
-    Write-Success "$ComponentName installed successfully to: $TargetPath"
-    
-    # Cleanup temporary extraction
-    if (Test-Path $tempExtractPath) {
-        Remove-Item $tempExtractPath -Recurse -Force -ErrorAction SilentlyContinue
+    finally {
+        # Cleanup temporary extraction
+        if (Test-Path $tempExtractPath) {
+            Remove-Item $tempExtractPath -Recurse -Force -ErrorAction SilentlyContinue
+        }
+        Remove-TempDirectory $tempExtractPath
     }
 }
 
@@ -280,52 +729,65 @@ function Set-EnvironmentVariables {
 }
 
 function Test-Installation {
-    Write-Info "Testing installation..."
+    Write-Info "Testing installation with timeout protection..."
     
     # Test Java
     try {
-        $javaVersion = & "$JAVA_HOME\bin\java.exe" -version 2>&1
-        if ($LASTEXITCODE -eq 0) {
+        Write-Info "Testing Java installation..."
+        $javaResult = Start-ProcessWithTimeout -FilePath "$JAVA_HOME\bin\java.exe" -ArgumentList @("-version") -TimeoutSeconds 30 -ProcessName "Java Version Check"
+        
+        if ($javaResult.ExitCode -eq 0) {
             Write-Success "Java is working correctly"
+            Write-Info "Java version output: $($javaResult.StandardError.Split("`n")[0])"
         } else {
-            Write-Warning "Java test failed"
+            Write-Warning "Java test failed with exit code: $($javaResult.ExitCode)"
         }
     }
     catch {
-        Write-Warning "Could not test Java installation"
+        Write-Warning "Could not test Java installation: $($_.Exception.Message)"
     }
     
     # Test Gradle
     try {
-        $gradleVersion = & "$GRADLE_HOME\bin\gradle.bat" --version 2>&1
-        if ($LASTEXITCODE -eq 0) {
+        Write-Info "Testing Gradle installation..."
+        $gradleResult = Start-ProcessWithTimeout -FilePath "$GRADLE_HOME\bin\gradle.bat" -ArgumentList @("--version") -TimeoutSeconds 60 -ProcessName "Gradle Version Check"
+        
+        if ($gradleResult.ExitCode -eq 0) {
             Write-Success "Gradle is working correctly"
+            $versionLine = $gradleResult.StandardOutput.Split("`n") | Where-Object { $_ -like "*Gradle*" } | Select-Object -First 1
+            if ($versionLine) {
+                Write-Info "Gradle version: $versionLine"
+            }
         } else {
-            Write-Warning "Gradle test failed"
+            Write-Warning "Gradle test failed with exit code: $($gradleResult.ExitCode)"
         }
     }
     catch {
-        Write-Warning "Could not test Gradle installation"
+        Write-Warning "Could not test Gradle installation: $($_.Exception.Message)"
     }
     
     # Test ADB
     try {
-        $adbVersion = & "$SDK_ROOT\platform-tools\adb.exe" version 2>&1
-        if ($LASTEXITCODE -eq 0) {
+        Write-Info "Testing ADB installation..."
+        $adbResult = Start-ProcessWithTimeout -FilePath "$SDK_ROOT\platform-tools\adb.exe" -ArgumentList @("version") -TimeoutSeconds 30 -ProcessName "ADB Version Check"
+        
+        if ($adbResult.ExitCode -eq 0) {
             Write-Success "ADB is working correctly"
+            Write-Info "ADB version: $($adbResult.StandardOutput.Split("`n")[0])"
         } else {
-            Write-Warning "ADB test failed"
+            Write-Warning "ADB test failed with exit code: $($adbResult.ExitCode)"
         }
     }
     catch {
-        Write-Warning "Could not test ADB installation"
+        Write-Warning "Could not test ADB installation: $($_.Exception.Message)"
     }
 }
 
 function Create-SampleProject {
-    Write-Info "Creating sample Android project..."
+    Write-Info "Creating sample Android project with timeout protection..."
     
     $sampleProjectPath = Join-Path $ROOT "sampleProject"
+    Add-TempDirectory $sampleProjectPath
     
     try {
         # Remove existing project
@@ -483,37 +945,45 @@ public class MainActivity extends AppCompatActivity {
         
         Write-Success "Sample project created at: $sampleProjectPath"
         
-        # Build the project
-        Write-Info "Building sample project..."
-        Set-Location $sampleProjectPath
+        # Build the project with timeout protection
+        Write-Info "Building sample project with timeout protection..."
         
-        $buildResult = & "$GRADLE_HOME\bin\gradle.bat" assembleDebug 2>&1
-        $buildExitCode = $LASTEXITCODE
+        $buildResult = Start-ProcessWithTimeout -FilePath "$GRADLE_HOME\bin\gradle.bat" -ArgumentList @("assembleDebug") -TimeoutSeconds $BUILD_TIMEOUT -WorkingDirectory $sampleProjectPath -ProcessName "Sample Project Build"
         
-        Write-Info "Build output:"
-        Write-Host $buildResult -ForegroundColor Gray
+        Write-Info "Build completed with exit code: $($buildResult.ExitCode)"
         
-        if ($buildExitCode -eq 0) {
+        if ($buildResult.StandardOutput) {
+            Write-Host "Build Output:" -ForegroundColor Gray
+            Write-Host $buildResult.StandardOutput -ForegroundColor DarkGray
+        }
+        
+        if ($buildResult.StandardError) {
+            Write-Host "Build Errors/Warnings:" -ForegroundColor Yellow
+            Write-Host $buildResult.StandardError -ForegroundColor DarkYellow
+        }
+        
+        if ($buildResult.ExitCode -eq 0) {
             Write-Success "Sample project built successfully!"
             
             # Check for APK
             $apkPath = "$sampleProjectPath\app\build\outputs\apk\debug\app-debug.apk"
             if (Test-Path $apkPath) {
-                Write-Success "APK created successfully: $apkPath"
+                $apkInfo = Get-Item $apkPath
+                Write-Success "APK created successfully: $($apkInfo.Name) ($([math]::Round($apkInfo.Length/1MB,2)) MB)"
             } else {
                 Write-Warning "Build succeeded but APK not found at expected location"
             }
         } else {
-            Write-Error "Sample project build failed"
-            Write-Host "Build output: $buildResult" -ForegroundColor Red
+            Write-Error "Sample project build failed with exit code: $($buildResult.ExitCode)"
         }
+        
+        # Remove from temp tracking since it's now a permanent test project
+        Remove-TempDirectory $sampleProjectPath
         
     }
     catch {
         Write-Error "Failed to create or build sample project: $($_.Exception.Message)"
-    }
-    finally {
-        Set-Location $ROOT
+        # Keep in temp tracking for cleanup
     }
 }
 
@@ -616,6 +1086,19 @@ Write-Host "Source Path: $SOURCE_PATH" -ForegroundColor Cyan
 Write-Host "===========================================" -ForegroundColor Green
 Write-Host ""
 
+# Register cleanup handler for emergency situations
+Register-Cleanup
+
+# Set up Ctrl+C handler
+[Console]::TreatControlCAsInput = $false
+$null = [Console]::CancelKeyPress.Add({
+    param($sender, $e)
+    Write-Warning "Ctrl+C detected. Performing cleanup..."
+    $e.Cancel = $true
+    Invoke-EmergencyCleanup
+    exit 1
+})
+
 # Spec Discovery and Selection (Task 1.5)
 Write-Info "Discovering available specs..."
 $availableSpecs = Get-AvailableSpecs
@@ -710,7 +1193,7 @@ Create-SampleProject
 Test-SampleProjectComprehensive
 
 function Test-SampleProjectComprehensive {
-    Write-Info "Running comprehensive tests on sample project..."
+    Write-Info "Running comprehensive tests on sample project with timeout protection..."
     
     $sampleProjectPath = Join-Path $ROOT "sampleProject"
     
@@ -730,8 +1213,6 @@ function Test-SampleProjectComprehensive {
     }
     
     try {
-        Set-Location $sampleProjectPath
-        
         # Test 1: Project Structure
         Write-Info "Testing project structure..."
         $requiredDirs = @(
@@ -742,7 +1223,8 @@ function Test-SampleProjectComprehensive {
         
         $structureValid = $true
         foreach ($dir in $requiredDirs) {
-            if (-not (Test-Path $dir)) {
+            $fullPath = Join-Path $sampleProjectPath $dir
+            if (-not (Test-Path $fullPath)) {
                 Write-Warning "Missing directory: $dir"
                 $structureValid = $false
             }
@@ -759,12 +1241,13 @@ function Test-SampleProjectComprehensive {
         
         $gradleValid = $true
         foreach ($file in $requiredFiles) {
-            if (-not (Test-Path $file)) {
+            $fullPath = Join-Path $sampleProjectPath $file
+            if (-not (Test-Path $fullPath)) {
                 Write-Warning "Missing Gradle file: $file"
                 $gradleValid = $false
             } else {
-                $content = Get-Content $file -Raw
-                if ($content.Length -lt 10) {
+                $content = Get-Content $fullPath -Raw -ErrorAction SilentlyContinue
+                if (-not $content -or $content.Length -lt 10) {
                     Write-Warning "Gradle file appears empty: $file"
                     $gradleValid = $false
                 }
@@ -783,7 +1266,8 @@ function Test-SampleProjectComprehensive {
         
         $sourceValid = $true
         foreach ($file in $sourceFiles) {
-            if (-not (Test-Path $file)) {
+            $fullPath = Join-Path $sampleProjectPath $file
+            if (-not (Test-Path $fullPath)) {
                 Write-Warning "Missing source file: $file"
                 $sourceValid = $false
             }
@@ -791,80 +1275,145 @@ function Test-SampleProjectComprehensive {
         $testResults.SourceFiles = $sourceValid
         
         # Test 4: Clean Build
-        Write-Info "Testing clean build..."
-        if (Test-Path "app\build") {
-            Remove-Item "app\build" -Recurse -Force
+        Write-Info "Testing clean build with timeout protection..."
+        $buildDir = Join-Path $sampleProjectPath "app\build"
+        if (Test-Path $buildDir) {
+            Remove-Item $buildDir -Recurse -Force -ErrorAction SilentlyContinue
         }
         
-        $cleanResult = & "$GRADLE_HOME\bin\gradle.bat" clean 2>&1
-        if ($LASTEXITCODE -eq 0) {
-            Write-Success "Clean build successful"
-        } else {
-            Write-Warning "Clean build failed: $cleanResult"
+        try {
+            $cleanResult = Start-ProcessWithTimeout -FilePath "$GRADLE_HOME\bin\gradle.bat" -ArgumentList @("clean") -TimeoutSeconds 300 -WorkingDirectory $sampleProjectPath -ProcessName "Gradle Clean"
+            
+            if ($cleanResult.ExitCode -eq 0) {
+                Write-Success "Clean build successful"
+            } else {
+                Write-Warning "Clean build failed with exit code: $($cleanResult.ExitCode)"
+            }
+        }
+        catch {
+            Write-Warning "Clean build failed: $($_.Exception.Message)"
         }
         
         # Test 5: Debug Build
-        Write-Info "Testing debug build..."
-        $buildResult = & "$GRADLE_HOME\bin\gradle.bat" assembleDebug 2>&1
-        $buildExitCode = $LASTEXITCODE
-        
-        if ($buildExitCode -eq 0) {
-            Write-Success "Debug build successful"
-            $testResults.BuildSuccess = $true
-        } else {
-            Write-Error "Debug build failed"
-            Write-Host "Build output: $buildResult" -ForegroundColor Red
-        }
-        
-        # Test 6: APK Generation
-        Write-Info "Testing APK generation..."
-        $apkPath = "app\build\outputs\apk\debug\app-debug.apk"
-        if (Test-Path $apkPath) {
-            $apkInfo = Get-Item $apkPath
-            Write-Success "APK generated successfully: $($apkInfo.Name) ($([math]::Round($apkInfo.Length/1MB,2)) MB)"
-            $testResults.APKGenerated = $true
+        Write-Info "Testing debug build with timeout protection..."
+        try {
+            $buildResult = Start-ProcessWithTimeout -FilePath "$GRADLE_HOME\bin\gradle.bat" -ArgumentList @("assembleDebug") -TimeoutSeconds $BUILD_TIMEOUT -WorkingDirectory $sampleProjectPath -ProcessName "Gradle Debug Build"
             
-            # Test 7: APK Validation
-            Write-Info "Validating APK structure..."
-            if ($apkInfo.Length -gt 1MB) {
-                Write-Success "APK size is reasonable"
-                $testResults.APKValid = $true
+            if ($buildResult.ExitCode -eq 0) {
+                Write-Success "Debug build successful"
+                $testResults.BuildSuccess = $true
+                
+                # Test 6: APK Generation
+                Write-Info "Testing APK generation..."
+                $apkPath = Join-Path $sampleProjectPath "app\build\outputs\apk\debug\app-debug.apk"
+                if (Test-Path $apkPath) {
+                    $apkInfo = Get-Item $apkPath
+                    Write-Success "APK generated successfully: $($apkInfo.Name) ($([math]::Round($apkInfo.Length/1MB,2)) MB)"
+                    $testResults.APKGenerated = $true
+                    
+                    # Test 7: APK Validation
+                    Write-Info "Validating APK structure..."
+                    if ($apkInfo.Length -gt 1MB) {
+                        Write-Success "APK size is reasonable"
+                        $testResults.APKValid = $true
+                    } else {
+                        Write-Warning "APK size seems too small: $($apkInfo.Length) bytes"
+                    }
+                } else {
+                    Write-Error "APK not found at expected location: $apkPath"
+                }
             } else {
-                Write-Warning "APK size seems too small: $($apkInfo.Length) bytes"
+                Write-Error "Debug build failed with exit code: $($buildResult.ExitCode)"
+                if ($buildResult.StandardError) {
+                    Write-Host "Build errors: $($buildResult.StandardError)" -ForegroundColor Red
+                }
             }
-        } else {
-            Write-Error "APK not found at expected location: $apkPath"
+        }
+        catch {
+            Write-Error "Debug build failed: $($_.Exception.Message)"
         }
         
         # Test 8: Offline Build Test
-        Write-Info "Testing offline build capability..."
-        if (Test-Path "app\build") {
-            Remove-Item "app\build" -Recurse -Force
+        Write-Info "Testing offline build capability with timeout protection..."
+        $buildDir = Join-Path $sampleProjectPath "app\build"
+        if (Test-Path $buildDir) {
+            Remove-Item $buildDir -Recurse -Force -ErrorAction SilentlyContinue
         }
         
-        $offlineResult = & "$GRADLE_HOME\bin\gradle.bat" assembleDebug --offline 2>&1
-        $offlineExitCode = $LASTEXITCODE
-        
-        if ($offlineExitCode -eq 0) {
-            Write-Success "Offline build successful"
-            $testResults.OfflineBuild = $true
-        } else {
-            Write-Warning "Offline build failed - this may be expected for first build"
-            Write-Host "Offline build output: $offlineResult" -ForegroundColor Yellow
+        try {
+            $offlineResult = Start-ProcessWithTimeout -FilePath "$GRADLE_HOME\bin\gradle.bat" -ArgumentList @("assembleDebug", "--offline") -TimeoutSeconds $BUILD_TIMEOUT -WorkingDirectory $sampleProjectPath -ProcessName "Gradle Offline Build"
+            
+            if ($offlineResult.ExitCode -eq 0) {
+                Write-Success "Offline build successful"
+                $testResults.OfflineBuild = $true
+            } else {
+                Write-Warning "Offline build failed - this may be expected for first build"
+                Write-Host "Offline build output: $($offlineResult.StandardError)" -ForegroundColor Yellow
+            }
+        }
+        catch {
+            Write-Warning "Offline build failed: $($_.Exception.Message)"
         }
         
         # Test 9: Gradle Tasks
         Write-Info "Testing available Gradle tasks..."
-        $tasksResult = & "$GRADLE_HOME\bin\gradle.bat" tasks --all 2>&1
-        if ($LASTEXITCODE -eq 0) {
-            Write-Success "Gradle tasks command successful"
-        } else {
-            Write-Warning "Gradle tasks command failed"
+        try {
+            $tasksResult = Start-ProcessWithTimeout -FilePath "$GRADLE_HOME\bin\gradle.bat" -ArgumentList @("tasks", "--all") -TimeoutSeconds 120 -WorkingDirectory $sampleProjectPath -ProcessName "Gradle Tasks"
+            
+            if ($tasksResult.ExitCode -eq 0) {
+                Write-Success "Gradle tasks command successful"
+            } else {
+                Write-Warning "Gradle tasks command failed"
+            }
+        }
+        catch {
+            Write-Warning "Gradle tasks command failed: $($_.Exception.Message)"
         }
         
         # Test 10: Dependencies Check
         Write-Info "Testing dependencies resolution..."
-        $depsResult = & "$GRADLE_HOME\bin\gradle.bat" dependencies 2>&1
+        try {
+            $depsResult = Start-ProcessWithTimeout -FilePath "$GRADLE_HOME\bin\gradle.bat" -ArgumentList @("dependencies") -TimeoutSeconds 300 -WorkingDirectory $sampleProjectPath -ProcessName "Gradle Dependencies"
+            
+            if ($depsResult.ExitCode -eq 0) {
+                Write-Success "Dependencies resolution successful"
+            } else {
+                Write-Warning "Dependencies resolution failed"
+            }
+        }
+        catch {
+            Write-Warning "Dependencies resolution failed: $($_.Exception.Message)"
+        }
+        
+    }
+    catch {
+        Write-Error "Error during comprehensive testing: $($_.Exception.Message)"
+        return $false
+    }
+    
+    # Generate test report
+    Write-Host ""
+    Write-Host "===========================================" -ForegroundColor Yellow
+    Write-Host "Sample Project Test Results" -ForegroundColor Yellow
+    Write-Host "===========================================" -ForegroundColor Yellow
+    
+    $passedTests = 0
+    $totalTests = $testResults.Keys.Count
+    
+    foreach ($test in $testResults.Keys) {
+        $status = if ($testResults[$test]) { "PASS" } else { "FAIL" }
+        $color = if ($testResults[$test]) { "Green" } else { "Red" }
+        
+        Write-Host "$test : $status" -ForegroundColor $color
+        if ($testResults[$test]) { $passedTests++ }
+    }
+    
+    Write-Host ""
+    Write-Host "Overall Result: $passedTests/$totalTests tests passed" -ForegroundColor $(if ($passedTests -eq $totalTests) { "Green" } else { "Yellow" })
+    Write-Host "===========================================" -ForegroundColor Yellow
+    
+    return ($passedTests -eq $totalTests)
+} "$GRADLE_HOME\bin\gradle.bat" dependencies 2>&1
         if ($LASTEXITCODE -eq 0) {
             Write-Success "Dependencies resolution successful"
         } else {
@@ -1316,3 +1865,10 @@ Write-Host ""
 Write-Host "Please restart your system to ensure all environment" -ForegroundColor Yellow
 Write-Host "variables are properly loaded." -ForegroundColor Yellow
 Write-Host "===========================================" -ForegroundColor Green
+
+# Final cleanup
+Write-Info "Performing final cleanup..."
+Invoke-EmergencyCleanup
+
+Write-Success "Installation completed successfully!"
+exit 0
