@@ -1,11 +1,9 @@
-﻿# اجرای تمام نصب‌ها
-# این اسکریپت تمام اسکریپت‌های نصب را به ترتیب وابستگی اجرا می‌کند
+# اجرای تمام بررسی‌های پیش‌نیازها
+# این اسکریپت تمام اسکریپت‌های بررسی پیش‌نیازها را اجرا می‌کند
 
 param(
     [string]$DownloadPath = "downloaded",
-    [string]$InstallPath = "",
     [switch]$Verbose,
-    [switch]$SkipOptional,
     [switch]$ContinueOnError
 )
 
@@ -16,59 +14,40 @@ $CommonDir = Join-Path $ScriptDir "common"
 . (Join-Path $CommonDir "Logger.ps1")
 
 # تنظیم لاگر
-Initialize-Logger -ComponentName "All-Installations" -Verbose:$Verbose
+Initialize-Logger -ComponentName "All-Prerequisites-Check" -Verbose:$Verbose
 
 try {
-    Write-LogInfo "شروع نصب تمام کامپوننت‌های Android Development Tools..."
+    Write-LogInfo "شروع بررسی تمام پیش‌نیازهای Android Development Tools..."
     Write-LogInfo "مسیر فایل‌های دانلود شده: $DownloadPath"
-    if ($InstallPath) {
-        Write-LogInfo "مسیر نصب: $InstallPath"
-    }
     
     # لیست کامپوننت‌ها به ترتیب وابستگی
     $Components = @(
-        @{ Name = "JDK 17"; Path = "jdk17\02-install-component.ps1"; Required = $true },
-        @{ Name = "Android Studio"; Path = "android-studio\02-install-component.ps1"; Required = $true },
-        @{ Name = "Gradle"; Path = "gradle\02-install-component.ps1"; Required = $true },
-        @{ Name = "Command Line Tools"; Path = "commandline-tools\02-install-component.ps1"; Required = $true },
-        @{ Name = "Platform Tools"; Path = "platform-tools\02-install-component.ps1"; Required = $true },
-        @{ Name = "Build Tools"; Path = "build-tools\02-install-component.ps1"; Required = $false },
-        @{ Name = "SDK Platforms"; Path = "sdk-platforms\02-install-component.ps1"; Required = $false },
-        @{ Name = "System Images"; Path = "system-images\02-install-component.ps1"; Required = $false },
-        @{ Name = "Repositories"; Path = "repositories\02-install-component.ps1"; Required = $false }
+        @{ Name = "JDK 17"; Path = "jdk17\01-check-prerequisites.ps1"; Required = $true },
+        @{ Name = "Android Studio"; Path = "android-studio\01-check-prerequisites.ps1"; Required = $true },
+        @{ Name = "Gradle"; Path = "gradle\01-check-prerequisites.ps1"; Required = $true },
+        @{ Name = "Command Line Tools"; Path = "commandline-tools\01-check-prerequisites.ps1"; Required = $true },
+        @{ Name = "Platform Tools"; Path = "platform-tools\01-check-prerequisites.ps1"; Required = $true },
+        @{ Name = "Build Tools"; Path = "build-tools\01-check-prerequisites.ps1"; Required = $false },
+        @{ Name = "SDK Platforms"; Path = "sdk-platforms\01-check-prerequisites.ps1"; Required = $false },
+        @{ Name = "System Images"; Path = "system-images\01-check-prerequisites.ps1"; Required = $false },
+        @{ Name = "Repositories"; Path = "repositories\01-check-prerequisites.ps1"; Required = $false }
     )
     
     $Results = @{}
     $SuccessCount = 0
     $FailureCount = 0
     $SkippedCount = 0
-    $TotalStartTime = Get-Date
     
-    Write-LogInfo "نصب $($Components.Count) کامپوننت..."
-    if ($SkipOptional) {
-        Write-LogInfo "کامپوننت‌های اختیاری رد خواهند شد"
-    }
+    Write-LogInfo "بررسی $($Components.Count) کامپوننت..."
     Write-LogInfo "=" * 60
     
     foreach ($Component in $Components) {
-        # رد کردن کامپوننت‌های اختیاری در صورت درخواست
-        if ($SkipOptional -and -not $Component.Required) {
-            Write-LogInfo "رد شدن $($Component.Name) (اختیاری)"
-            $Results[$Component.Name] = @{
-                Status = "Skipped"
-                Message = "رد شده توسط کاربر"
-                ExitCode = 0
-            }
-            $SkippedCount++
-            continue
-        }
-        
         $ComponentPath = Join-Path $ScriptDir $Component.Path
         
-        Write-LogInfo "نصب $($Component.Name)..."
+        Write-LogInfo "بررسی $($Component.Name)..."
         
         if (-not (Test-Path $ComponentPath)) {
-            Write-LogWarning "اسکریپت نصب یافت نشد: $ComponentPath"
+            Write-LogWarning "اسکریپت بررسی یافت نشد: $ComponentPath"
             $Results[$Component.Name] = @{
                 Status = "Skipped"
                 Message = "اسکریپت یافت نشد"
@@ -79,35 +58,30 @@ try {
         }
         
         try {
-            # اجرای اسکریپت نصب
+            # اجرای اسکریپت بررسی
             $StartTime = Get-Date
             
-            # تنظیم پارامترهای اجرا
-            $InstallParams = @("-DownloadPath", $DownloadPath)
-            if ($InstallPath) {
-                $InstallParams += @("-InstallPath", $InstallPath)
-            }
             if ($Verbose) {
-                $InstallParams += "-Verbose"
+                $Output = & PowerShell -File $ComponentPath -DownloadPath $DownloadPath -Verbose 2>&1
+            } else {
+                $Output = & PowerShell -File $ComponentPath -DownloadPath $DownloadPath 2>&1
             }
-            
-            $Output = & PowerShell -File $ComponentPath @InstallParams 2>&1
             
             $EndTime = Get-Date
             $Duration = ($EndTime - $StartTime).TotalSeconds
             $ExitCode = $LASTEXITCODE
             
             if ($ExitCode -eq 0) {
-                Write-LogSuccess "$($Component.Name): نصب موفق (مدت زمان: $([math]::Round($Duration, 1)) ثانیه)"
+                Write-LogSuccess "$($Component.Name): موفق (مدت زمان: $([math]::Round($Duration, 1)) ثانیه)"
                 $Results[$Component.Name] = @{
                     Status = "Success"
-                    Message = "نصب موفقیت‌آمیز"
+                    Message = "تمام پیش‌نیازها برآورده شده"
                     ExitCode = $ExitCode
                     Duration = $Duration
                 }
                 $SuccessCount++
             } else {
-                $ErrorMessage = "نصب ناموفق (Exit Code: $ExitCode)"
+                $ErrorMessage = "ناموفق (Exit Code: $ExitCode)"
                 if ($Component.Required) {
                     Write-LogError "$($Component.Name): $ErrorMessage"
                 } else {
@@ -125,14 +99,14 @@ try {
                 
                 # اگر کامپوننت ضروری است و ContinueOnError فعال نیست، متوقف شو
                 if ($Component.Required -and -not $ContinueOnError) {
-                    Write-LogError "نصب کامپوننت ضروری $($Component.Name) ناموفق بود. اجرا متوقف می‌شود."
+                    Write-LogError "کامپوننت ضروری $($Component.Name) ناموفق بود. اجرا متوقف می‌شود."
                     Write-LogError "برای ادامه با وجود خطا از پارامتر -ContinueOnError استفاده کنید"
                     break
                 }
             }
             
         } catch {
-            Write-LogError "خطا در نصب $($Component.Name): $($_.Exception.Message)"
+            Write-LogError "خطا در اجرای بررسی $($Component.Name): $($_.Exception.Message)"
             $Results[$Component.Name] = @{
                 Status = "Error"
                 Message = $_.Exception.Message
@@ -141,7 +115,7 @@ try {
             $FailureCount++
             
             if ($Component.Required -and -not $ContinueOnError) {
-                Write-LogError "خطا در نصب کامپوننت ضروری $($Component.Name). اجرا متوقف می‌شود."
+                Write-LogError "خطا در کامپوننت ضروری $($Component.Name). اجرا متوقف می‌شود."
                 break
             }
         }
@@ -149,17 +123,13 @@ try {
         Write-LogInfo "-" * 40
     }
     
-    $TotalEndTime = Get-Date
-    $TotalDuration = ($TotalEndTime - $TotalStartTime).TotalMinutes
-    
     # گزارش نهایی
     Write-LogInfo "=" * 60
-    Write-LogInfo "خلاصه نصب کامپوننت‌ها:"
+    Write-LogInfo "خلاصه بررسی پیش‌نیازها:"
     Write-LogInfo "موفق: $SuccessCount"
     Write-LogInfo "ناموفق: $FailureCount"
     Write-LogInfo "رد شده: $SkippedCount"
     Write-LogInfo "کل: $($Components.Count)"
-    Write-LogInfo "مدت زمان کل: $([math]::Round($TotalDuration, 1)) دقیقه"
     
     # جزئیات نتایج
     Write-LogInfo ""
@@ -196,18 +166,11 @@ try {
     }
     
     if ($FailedRequired.Count -eq 0) {
-        Write-LogSuccess "تمام کامپوننت‌های ضروری با موفقیت نصب شدند!"
-        Write-LogInfo "می‌توانید تست‌ها را اجرا کنید با: .\run-all-tests.ps1"
-        
-        # پیشنهاد اجرای تست خودکار
-        Write-LogInfo ""
-        Write-LogInfo "آیا می‌خواهید تست‌ها را به صورت خودکار اجرا کنید؟"
-        Write-LogInfo "برای اجرای خودکار تست‌ها از دستور زیر استفاده کنید:"
-        Write-LogInfo ".\run-all-tests.ps1"
-        
+        Write-LogSuccess "تمام کامپوننت‌های ضروری آماده هستند!"
+        Write-LogInfo "می‌توانید نصب را شروع کنید با اجرای: .\run-all-installations.ps1"
         exit 0
     } else {
-        Write-LogError "نصب کامپوننت‌های ضروری ناموفق: $($FailedRequired -join ', ')"
+        Write-LogError "کامپوننت‌های ضروری ناموفق: $($FailedRequired -join ', ')"
         Write-LogError "لطفاً مشکلات را برطرف کنید و مجدداً تلاش کنید"
         
         # نمایش جزئیات خطاها
@@ -223,7 +186,7 @@ try {
     }
     
 } catch {
-    Write-LogError "خطا در اجرای نصب‌ها: $($_.Exception.Message)"
+    Write-LogError "خطا در اجرای بررسی‌های پیش‌نیاز: $($_.Exception.Message)"
     Write-LogError "جزئیات خطا: $($_.Exception.StackTrace)"
     exit 1
 }

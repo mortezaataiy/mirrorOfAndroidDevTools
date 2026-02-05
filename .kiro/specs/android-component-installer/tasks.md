@@ -84,7 +84,7 @@
   - تست نصب در شرایط مختلف
   - _الزامات: 5.2_
 
-- [-] 5. پیاده‌سازی اسکریپت‌های Gradle
+- [x] 5. پیاده‌سازی اسکریپت‌های Gradle
 - [x] 5.1 ایجاد 01-check-prerequisites.ps1 برای Gradle
   - بررسی وجود فایل gradle-8.0.2-bin.zip
   - بررسی نصب JDK (وابستگی)
@@ -105,19 +105,19 @@
   - تست عملکرد پایه Gradle
   - _الزامات: 5.3_
 
-- [ ] 6. پیاده‌سازی اسکریپت‌های Command Line Tools
-- [ ] 6.1 ایجاد 01-check-prerequisites.ps1 برای Command Line Tools
+- [x] 6. پیاده‌سازی اسکریپت‌های Command Line Tools
+- [x] 6.1 ایجاد 01-check-prerequisites.ps1 برای Command Line Tools
   - بررسی وجود فایل commandlinetools-win-latest.zip
   - بررسی نصب JDK (وابستگی)
   - _الزامات: 2.1, 2.2, 5.4_
 
-- [ ] 6.2 ایجاد 02-install-component.ps1 برای Command Line Tools
+- [x] 6.2 ایجاد 02-install-component.ps1 برای Command Line Tools
   - استخراج فایل Command Line Tools
   - تنظیم ANDROID_SDK_ROOT
   - ایجاد ساختار SDK
   - _الزامات: 3.1, 3.2, 3.3, 5.4_
 
-- [ ] 6.3 ایجاد 03-test-installation.ps1 برای Command Line Tools
+- [x] 6.3 ایجاد 03-test-installation.ps1 برای Command Line Tools
   - تست دستور sdkmanager --version
   - تست لیست کردن packages
   - _الزامات: 4.1, 4.2, 4.4, 5.4_
@@ -126,18 +126,18 @@
   - تست عملکرد sdkmanager
   - _الزامات: 5.4_
 
-- [ ] 7. پیاده‌سازی اسکریپت‌های Platform Tools
-- [ ] 7.1 ایجاد 01-check-prerequisites.ps1 برای Platform Tools
+- [x] 7. پیاده‌سازی اسکریپت‌های Platform Tools
+- [x] 7.1 ایجاد 01-check-prerequisites.ps1 برای Platform Tools
   - بررسی وجود فایل platform-tools.zip
   - بررسی نصب Command Line Tools (وابستگی)
   - _الزامات: 2.1, 2.2, 5.5_
 
-- [ ] 7.2 ایجاد 02-install-component.ps1 برای Platform Tools
+- [x] 7.2 ایجاد 02-install-component.ps1 برای Platform Tools
   - استخراج Platform Tools
   - اضافه کردن به PATH
   - _الزامات: 3.1, 3.2, 3.3, 5.5_
 
-- [ ] 7.3 ایجاد 03-test-installation.ps1 برای Platform Tools
+- [x] 7.3 ایجاد 03-test-installation.ps1 برای Platform Tools
   - تست دستور adb version
   - تست دستور fastboot --version
   - _الزامات: 4.1, 4.2, 4.4, 5.5_
@@ -146,18 +146,18 @@
   - تست عملکرد adb و fastboot
   - _الزامات: 5.5_
 
-- [ ] 8. پیاده‌سازی اسکریپت‌های Build Tools
-- [ ] 8.1 ایجاد 01-check-prerequisites.ps1 برای Build Tools
+- [x] 8. پیاده‌سازی اسکریپت‌های Build Tools
+- [x] 8.1 ایجاد 01-check-prerequisites.ps1 برای Build Tools
   - بررسی وجود فایل build-tools-33.0.2.zip
   - بررسی نصب Command Line Tools (وابستگی)
   - _الزامات: 2.1, 2.2, 5.6_
 
-- [ ] 8.2 ایجاد 02-install-component.ps1 برای Build Tools
+- [x] 8.2 ایجاد 02-install-component.ps1 برای Build Tools
   - استخراج Build Tools
   - تنظیم در ساختار SDK
   - _الزامات: 3.1, 3.2, 5.6_
 
-- [ ] 8.3 ایجاد 03-test-installation.ps1 برای Build Tools
+- [x] 8.3 ایجاد 03-test-installation.ps1 برای Build Tools
   - تست دستور aapt version
   - تست دستور dx --version
   - _الزامات: 4.1, 4.2, 4.4, 5.6_
@@ -166,18 +166,18 @@
   - تست عملکرد ابزارهای build
   - _الزامات: 5.6_
 
-- [ ] 9. پیاده‌سازی اسکریپت‌های SDK Platforms
-- [ ] 9.1 ایجاد 01-check-prerequisites.ps1 برای SDK Platforms
+- [x] 9. پیاده‌سازی اسکریپت‌های SDK Platforms
+- [x] 9.1 ایجاد 01-check-prerequisites.ps1 برای SDK Platforms
   - بررسی وجود فایل‌های sdk-platform-*.zip
   - بررسی نصب Command Line Tools (وابستگی)
   - _الزامات: 2.1, 2.2, 5.7_
 
-- [ ] 9.2 ایجاد 02-install-component.ps1 برای SDK Platforms
+- [x] 9.2 ایجاد 02-install-component.ps1 برای SDK Platforms
   - استخراج Platform files
   - تنظیم در ساختار SDK
   - _الزامات: 3.1, 3.2, 5.7_
 
-- [ ] 9.3 ایجاد 03-test-installation.ps1 برای SDK Platforms
+- [x] 9.3 ایجاد 03-test-installation.ps1 برای SDK Platforms
   - تست شناسایی API levels
   - تست دسترسی به android.jar
   - _الزامات: 4.1, 4.2, 4.4, 5.7_
@@ -186,18 +186,18 @@
   - تست نصب چندین API level
   - _الزامات: 5.7_
 
-- [ ] 10. پیاده‌سازی اسکریپت‌های System Images
-- [ ] 10.1 ایجاد 01-check-prerequisites.ps1 برای System Images
+- [x] 10. پیاده‌سازی اسکریپت‌های System Images
+- [x] 10.1 ایجاد 01-check-prerequisites.ps1 برای System Images
   - بررسی وجود فایل‌های sysimage-*.zip
   - بررسی نصب Command Line Tools (وابستگی)
   - _الزامات: 2.1, 2.2, 5.8_
 
-- [ ] 10.2 ایجاد 02-install-component.ps1 برای System Images
+- [x] 10.2 ایجاد 02-install-component.ps1 برای System Images
   - استخراج System Images
   - تنظیم در ساختار SDK
   - _الزامات: 3.1, 3.2, 5.8_
 
-- [ ] 10.3 ایجاد 03-test-installation.ps1 برای System Images
+- [x] 10.3 ایجاد 03-test-installation.ps1 برای System Images
   - تست شناسایی system images
   - تست ایجاد AVD ساده
   - _الزامات: 4.1, 4.2, 4.4, 5.8_
@@ -206,18 +206,18 @@
   - تست عملکرد emulator
   - _الزامات: 5.8_
 
-- [ ] 11. پیاده‌سازی اسکریپت‌های Repositories
-- [ ] 11.1 ایجاد 01-check-prerequisites.ps1 برای Repositories
+- [x] 11. پیاده‌سازی اسکریپت‌های Repositories
+- [x] 11.1 ایجاد 01-check-prerequisites.ps1 برای Repositories
   - بررسی وجود فایل‌های *-m2repository.zip
   - بررسی نصب Command Line Tools (وابستگی)
   - _الزامات: 2.1, 2.2, 5.9_
 
-- [ ] 11.2 ایجاد 02-install-component.ps1 برای Repositories
+- [x] 11.2 ایجاد 02-install-component.ps1 برای Repositories
   - استخراج Repository files
   - تنظیم در ساختار SDK
   - _الزامات: 3.1, 3.2, 5.9_
 
-- [ ] 11.3 ایجاد 03-test-installation.ps1 برای Repositories
+- [x] 11.3 ایجاد 03-test-installation.ps1 برای Repositories
   - تست دسترسی به Maven artifacts
   - بررسی ساختار repository
   - _الزامات: 4.1, 4.2, 4.4, 5.9_
@@ -226,18 +226,18 @@
   - تست دسترسی به کتابخانه‌های مختلف
   - _الزامات: 5.9_
 
-- [ ] 12. ایجاد اسکریپت اجرای کلی
-- [ ] 12.1 ایجاد run-all-checks.ps1
+- [x] 12. ایجاد اسکریپت اجرای کلی
+- [x] 12.1 ایجاد run-all-checks.ps1
   - اجرای تمام اسکریپت‌های بررسی پیش‌نیازها
   - گزارش وضعیت کلی
   - _الزامات: 6.1, 7.3_
 
-- [ ] 12.2 ایجاد run-all-installations.ps1
+- [x] 12.2 ایجاد run-all-installations.ps1
   - اجرای تمام اسکریپت‌های نصب به ترتیب وابستگی
   - مدیریت خطا و توقف در صورت شکست
   - _الزامات: 6.1, 6.4, 7.3_
 
-- [ ] 12.3 ایجاد run-all-tests.ps1
+- [x] 12.3 ایجاد run-all-tests.ps1
   - اجرای تمام اسکریپت‌های تست
   - تولید گزارش جامع
   - _الزامات: 4.6, 6.1, 7.3_
@@ -246,7 +246,7 @@
   - **خصوصیت ۲: استقلال اسکریپت‌ها**
   - **اعتبارسنجی: الزامات 6.1, 6.2**
 
-- [ ] 13. نقطه بررسی - اطمینان از عملکرد تمام اسکریپت‌ها
+- [x] 13. نقطه بررسی - اطمینان از عملکرد تمام اسکریپت‌ها
   - اطمینان از اجرای موفق تمام تست‌ها، در صورت بروز سؤال از کاربر سؤال کنید.
 
 - [ ]* 13.1 نوشتن تست خصوصیت برای تست‌پذیری نصب
@@ -261,7 +261,7 @@
   - **خصوصیت ۵: عملکرد آفلاین**
   - **اعتبارسنجی: الزامات 8.1, 8.2, 8.4**
 
-- [ ] 14. تست کامل سیستم
+- [-] 14. تست کامل سیستم
 - [ ] 14.1 تست نصب کامل در محیط تمیز
   - اجرای کامل فرایند نصب
   - تست ایجاد پروژه Hello World
