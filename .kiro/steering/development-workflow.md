@@ -5,7 +5,7 @@
 ### فاز 1: دانلود و ذخیره‌سازی (فعلی)
 1. **GitHub Actions** فایل‌های مورد نیاز را دانلود می‌کند
 2. فایل‌ها به عنوان **Artifacts** ذخیره می‌شوند
-3. اسکریپت PowerShell فایل‌ها را از پوشه `.ignoredDownloads` پیدا و نصب می‌کند
+3. سیستم `installation-scripts` فایل‌ها را از پوشه `downloaded` پیدا و نصب می‌کند
 
 ### فاز 2: انتقال به Releases (آینده)
 1. فایل‌های دانلود شده به **GitHub Releases** منتقل می‌شوند
@@ -14,9 +14,9 @@
 
 ## ساختار فایل‌های دانلودی
 
-### پوشه `.ignoredDownloads/`:
+### پوشه `downloaded/`:
 ```
-.ignoredDownloads/
+downloaded/
 ├── android-studio-2022.3.1.20-windows.exe
 ├── build-tools-33.0.2.zip
 ├── cmake/
@@ -63,8 +63,12 @@
 & "C:\Program Files\GitHub CLI\gh.exe" workflow run "android-offline-complete.yml"
 ```
 
-### تست اسکریپت نصب:
+### تست اسکریپت‌های نصب:
 ```powershell
+# اجرای سیستم نصب کامل
+.\installation-scripts\run-all-installations.ps1
+
+# یا اجرای اسکریپت ساده
 .\auto-download-and-setup-android-offline.ps1
 ```
 

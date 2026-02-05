@@ -21,10 +21,11 @@
 
 ### پوشه‌ها:
 - `.github/workflows/` - فایل‌های GitHub Actions برای دانلود خودکار
-- `.ignoredDownloads/` - فایل‌های دانلود شده (در .gitignore قرار دارد)
+- `downloaded/` - فایل‌های دانلود شده (در .gitignore قرار دارد)
+- `installation-scripts/` - سیستم منظم نصب کامپوننت‌های Android Development Tools
 
 ### GitHub Actions Workflows:
-- نیاز به ایجاد یک workflow جدید مطابق goal.md
+- `android-offline-complete.yml` - workflow کامل دانلود و اعتبارسنجی
 
 ## فلسفه پروژه
 - **کاملاً آفلاین**: همه چیز باید بدون اتصال اینترنت کار کند

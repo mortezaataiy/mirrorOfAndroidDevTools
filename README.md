@@ -46,10 +46,6 @@
 - `auto-download-and-setup-android-offline.ps1` - اسکریپت نصب آفلاین ویندوز (3000+ خط)
 - `.gitignore` - شامل پوشه `.ignoredDownloads`
 
-### اسکریپت‌های تست و اجرا
-- `run-workflow-test.ps1` - تست اجرای workflow با GitHub CLI
-- `test-workflow-simple.ps1` - اسکریپت ساده تست workflow
-
 ### پوشه‌ها
 
 #### `.github/workflows/` - GitHub Actions
@@ -58,9 +54,16 @@
   - اعتبارسنجی یکپارچگی فایل‌ها
   - آپلود به عنوان artifacts جداگانه
 
-#### `.ignoredDownloads/` - فایل‌های دانلود شده
+#### `installation-scripts/` - سیستم نصب کامپوننت‌ها
+- سیستم منظم نصب، بررسی و تست کامپوننت‌های Android Development Tools
+- 9 کامپوننت اصلی با الگوی یکسان (JDK17, Android Studio, Gradle, و غیره)
+- هر کامپوننت شامل 3 اسکریپت: بررسی پیش‌نیازها، نصب، تست
+- ماژول‌های مشترک برای لاگ‌گذاری، اعتبارسنجی فایل، و مدیریت محیط
+- اسکریپت‌های اجرای کلی برای نصب خودکار تمام کامپوننت‌ها
+
+#### `downloaded/` - فایل‌های دانلود شده
 - فایل‌های دانلود شده از GitHub Actions (در git ignore)
-- محل جستجوی اسکریپت نصب برای فایل‌ها
+- محل جستجوی اسکریپت‌های نصب برای فایل‌ها
 
 #### `.kiro/steering/` - راهنماهای توسعه
 - `project-overview.md` - نمای کلی پروژه و فلسفه آن
@@ -68,23 +71,24 @@
 - `github-cli-usage.md` - راهنمای تست GitHub CLI (موقت)
 - `development-workflow.md` - گردش کار توسعه پروژه
 
-#### `scripts/` - اسکریپت‌های کمکی PowerShell
-- `Main.ps1` - اسکریپت اصلی ارکستراسیون
-- `VersionDiscovery.ps1` - شناسایی آخرین ورژن‌های ابزارها
-- `DownloadValidator.ps1` - اعتبارسنجی لینک‌های دانلود
-- `ToolInstaller.ps1` - دانلود و نصب ابزارها
-- `HelloWorldBuilder.ps1` - ایجاد و بیلد پروژه تست
-- `YamlDatabaseManager.ps1` - مدیریت پایگاه داده ورژن‌ها
-- `ErrorHandler.ps1` - مدیریت خطا و لاگ‌گذاری
-- `README.md` - راهنمای استفاده از اسکریپت‌ها
+#### `.kiro/specs/` - مستندات طراحی
+- `android-installation-docs/` - spec مستندات نصب کامپوننت‌ها
+- `android-component-installer/` - spec سیستم نصب کامپوننت‌ها
+
+#### `docs/` - مستندات نصب
+- راهنماهای گام‌به‌گام نصب هر کامپوننت (11 فایل)
+- مستندات troubleshooting و حل مشکلات
 
 #### `tests/` - تست‌های اعتبارسنجی
-- `test_direct_urls_property.sh` - تست URL های مستقیم
-- `test_zip_property.sh` - تست ویژگی‌های ZIP
-- `validation_tests.sh` - تست‌های اعتبارسنجی کلی
+- `run-workflow-test.ps1` - تست اجرای workflow با GitHub CLI
+- `test-workflow-simple.ps1` - اسکریپت ساده تست workflow
+- `README.md` - راهنمای تست‌ها
 
-#### `workflow-structure-confirmation/`
-- `validation_results.json` - نتایج اعتبارسنجی workflow
+#### `logs/` - لاگ‌های عملیات
+- لاگ‌های نصب و عملیات سیستم
+
+#### `Deleted/` - فایل‌های منتقل شده
+- فایل‌های قدیمی و اضافی که از پروژه حذف شدند
 
 ## نحوه استفاده
 
