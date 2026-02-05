@@ -1,5 +1,5 @@
-# اجرای تمام بررسی‌های پیش‌نیازها
-# این اسکریپت تمام اسکریپت‌های بررسی پیش‌نیازها را اجرا می‌کند
+# Run all prerequisite checks
+# This script runs all prerequisite check scripts
 
 param(
     [string]$DownloadPath = "downloaded",
@@ -7,20 +7,20 @@ param(
     [switch]$ContinueOnError
 )
 
-# وارد کردن ماژول‌های مشترک
+# Import common modules
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $CommonDir = Join-Path $ScriptDir "common"
 
 . (Join-Path $CommonDir "Logger.ps1")
 
-# تنظیم لاگر
+# Setup logger
 Initialize-Logger -ComponentName "All-Prerequisites-Check" -Verbose:$Verbose
 
 try {
-    Write-LogInfo "شروع بررسی تمام پیش‌نیازهای Android Development Tools..."
-    Write-LogInfo "مسیر فایل‌های دانلود شده: $DownloadPath"
+    Write-LogInfo "Starting prerequisite checks for Android Development Tools..."
+    Write-LogInfo "Download path: $DownloadPath"
     
-    # لیست کامپوننت‌ها به ترتیب وابستگی
+    # List of components in dependency order
     $Components = @(
         @{ Name = "JDK 17"; Path = "jdk17\01-check-prerequisites.ps1"; Required = $true },
         @{ Name = "Android Studio"; Path = "android-studio\01-check-prerequisites.ps1"; Required = $true },
@@ -38,19 +38,19 @@ try {
     $FailureCount = 0
     $SkippedCount = 0
     
-    Write-LogInfo "بررسی $($Components.Count) کامپوننت..."
+    Write-LogInfo "Checking $($Components.Count) components..."
     Write-LogInfo "=" * 60
     
     foreach ($Component in $Components) {
         $ComponentPath = Join-Path $ScriptDir $Component.Path
         
-        Write-LogInfo "بررسی $($Component.Name)..."
+        Write-LogInfo "Checking $($Component.Name)..."
         
         if (-not (Test-Path $ComponentPath)) {
-            Write-LogWarning "اسکریپت بررسی یافت نشد: $ComponentPath"
+            Write-LogWarning "Check script not found: $ComponentPath"
             $Results[$Component.Name] = @{
                 Status = "Skipped"
-                Message = "اسکریپت یافت نشد"
+                Message = "Script not found"
                 ExitCode = -1
             }
             $SkippedCount++
@@ -58,7 +58,7 @@ try {
         }
         
         try {
-            # اجرای اسکریپت بررسی
+            # Run check script
             $StartTime = Get-Date
             
             if ($Verbose) {
@@ -72,20 +72,20 @@ try {
             $ExitCode = $LASTEXITCODE
             
             if ($ExitCode -eq 0) {
-                Write-LogSuccess "$($Component.Name): موفق (مدت زمان: $([math]::Round($Duration, 1)) ثانیه)"
+                Write-LogSuccess "$($Component.Name): Success (Duration: $([math]::Round($Duration, 1)) seconds)"
                 $Results[$Component.Name] = @{
                     Status = "Success"
-                    Message = "تمام پیش‌نیازها برآورده شده"
+                    Message = "All prerequisites met"
                     ExitCode = $ExitCode
                     Duration = $Duration
                 }
                 $SuccessCount++
             } else {
-                $ErrorMessage = "ناموفق (Exit Code: $ExitCode)"
+                $ErrorMessage = "Failed (Exit Code: $ExitCode)"
                 if ($Component.Required) {
                     Write-LogError "$($Component.Name): $ErrorMessage"
                 } else {
-                    Write-LogWarning "$($Component.Name): $ErrorMessage (اختیاری)"
+                    Write-LogWarning "$($Component.Name): $ErrorMessage (Optional)"
                 }
                 
                 $Results[$Component.Name] = @{
@@ -97,16 +97,16 @@ try {
                 }
                 $FailureCount++
                 
-                # اگر کامپوننت ضروری است و ContinueOnError فعال نیست، متوقف شو
+                # If required component fails and ContinueOnError is not set, stop
                 if ($Component.Required -and -not $ContinueOnError) {
-                    Write-LogError "کامپوننت ضروری $($Component.Name) ناموفق بود. اجرا متوقف می‌شود."
-                    Write-LogError "برای ادامه با وجود خطا از پارامتر -ContinueOnError استفاده کنید"
+                    Write-LogError "Required component $($Component.Name) failed. Stopping execution."
+                    Write-LogError "Use -ContinueOnError parameter to continue despite errors"
                     break
                 }
             }
             
         } catch {
-            Write-LogError "خطا در اجرای بررسی $($Component.Name): $($_.Exception.Message)"
+            Write-LogError "Error checking $($Component.Name): $($_.Exception.Message)"
             $Results[$Component.Name] = @{
                 Status = "Error"
                 Message = $_.Exception.Message
@@ -115,7 +115,7 @@ try {
             $FailureCount++
             
             if ($Component.Required -and -not $ContinueOnError) {
-                Write-LogError "خطا در کامپوننت ضروری $($Component.Name). اجرا متوقف می‌شود."
+                Write-LogError "Error in required component $($Component.Name). Stopping execution."
                 break
             }
         }
@@ -123,38 +123,38 @@ try {
         Write-LogInfo "-" * 40
     }
     
-    # گزارش نهایی
+    # Final report
     Write-LogInfo "=" * 60
-    Write-LogInfo "خلاصه بررسی پیش‌نیازها:"
-    Write-LogInfo "موفق: $SuccessCount"
-    Write-LogInfo "ناموفق: $FailureCount"
-    Write-LogInfo "رد شده: $SkippedCount"
-    Write-LogInfo "کل: $($Components.Count)"
+    Write-LogInfo "Prerequisites Check Summary:"
+    Write-LogInfo "Success: $SuccessCount"
+    Write-LogInfo "Failed: $FailureCount"
+    Write-LogInfo "Skipped: $SkippedCount"
+    Write-LogInfo "Total: $($Components.Count)"
     
-    # جزئیات نتایج
+    # Detailed results
     Write-LogInfo ""
-    Write-LogInfo "جزئیات نتایج:"
+    Write-LogInfo "Detailed Results:"
     foreach ($Component in $Components) {
         $Result = $Results[$Component.Name]
         if ($Result) {
             $StatusIcon = switch ($Result.Status) {
-                "Success" { "✓" }
-                "Failed" { "✗" }
-                "Error" { "!" }
-                "Skipped" { "-" }
-                default { "?" }
+                "Success" { "[OK]" }
+                "Failed" { "[FAIL]" }
+                "Error" { "[ERROR]" }
+                "Skipped" { "[SKIP]" }
+                default { "[?]" }
             }
             
-            $RequiredText = if ($Component.Required) { "(ضروری)" } else { "(اختیاری)" }
+            $RequiredText = if ($Component.Required) { "(Required)" } else { "(Optional)" }
             Write-LogInfo "$StatusIcon $($Component.Name) $RequiredText : $($Result.Message)"
             
             if ($Result.Duration) {
-                Write-LogInfo "    مدت زمان: $([math]::Round($Result.Duration, 1)) ثانیه"
+                Write-LogInfo "    Duration: $([math]::Round($Result.Duration, 1)) seconds"
             }
         }
     }
     
-    # بررسی کامپوننت‌های ضروری
+    # Check required components
     $RequiredComponents = $Components | Where-Object { $_.Required }
     $FailedRequired = @()
     
@@ -166,18 +166,18 @@ try {
     }
     
     if ($FailedRequired.Count -eq 0) {
-        Write-LogSuccess "تمام کامپوننت‌های ضروری آماده هستند!"
-        Write-LogInfo "می‌توانید نصب را شروع کنید با اجرای: .\run-all-installations.ps1"
+        Write-LogSuccess "All required components are ready!"
+        Write-LogInfo "You can start installation by running: .\run-all-installations.ps1"
         exit 0
     } else {
-        Write-LogError "کامپوننت‌های ضروری ناموفق: $($FailedRequired -join ', ')"
-        Write-LogError "لطفاً مشکلات را برطرف کنید و مجدداً تلاش کنید"
+        Write-LogError "Failed required components: $($FailedRequired -join ', ')"
+        Write-LogError "Please fix the issues and try again"
         
-        # نمایش جزئیات خطاها
+        # Show error details
         foreach ($Failed in $FailedRequired) {
             $Result = $Results[$Failed]
             if ($Result -and $Result.Output) {
-                Write-LogError "خطای $Failed :"
+                Write-LogError "Error details for $Failed :"
                 $Result.Output | ForEach-Object { Write-LogError "  $_" }
             }
         }
@@ -186,7 +186,7 @@ try {
     }
     
 } catch {
-    Write-LogError "خطا در اجرای بررسی‌های پیش‌نیاز: $($_.Exception.Message)"
-    Write-LogError "جزئیات خطا: $($_.Exception.StackTrace)"
+    Write-LogError "Error running prerequisite checks: $($_.Exception.Message)"
+    Write-LogError "Error details: $($_.Exception.StackTrace)"
     exit 1
 }
